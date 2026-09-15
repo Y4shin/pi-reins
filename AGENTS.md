@@ -65,7 +65,7 @@ spell out which.
 - **Derived state is never persisted.** A core product rule
   (recomputed progress, assessments, scoped allocations). Agents
   working on this repo must not "helpfully" cache computed values into
-  the plan directory or `plan.json`.
+  the plan directory or its root `index.md`.
 - **No em-dashes anywhere in prose** (`SKILL.md` files, docs,
   `README.md`, `CHANGELOG.md`, ADRs, task docs, commit messages). Where
   a sentence reaches for one, rewrite it with a comma, colon, period,

@@ -9,7 +9,10 @@ The directory is the complete durable representation of:
 - the agreed execution contract;
 - tasks and phases;
 - durable execution progress;
+- the plan's change history;
 - optional execution budgets and timing facts.
+
+A plan directory is a self-contained OKF 0.2 bundle: a directory tree of Markdown files with YAML frontmatter. The durable plan-level concept is `plan.md`, an ordinary OKF concept document whose frontmatter carries the plan's structured metadata and whose body carries the prose description of the plan. The root `index.md` is the bundle index: strict OKF index semantics, progressive-disclosure navigation to the plan, phases, tasks, and supporting concepts, and the `okf_version` declaration. The root `log.md` records the plan's change history.
 
 Any state that must survive an agent or process restart MUST be represented inside the plan directory. Ephemeral interaction, UI, cache, or control-flow state SHOULD remain in memory.
 
@@ -27,7 +30,7 @@ This specification distinguishes between fields and structures available at diff
 
 | Phase | Filesystem capabilities |
 |---|---|
-| **Phase 1 — Core Execution Contract** | `plan.json`, OKF Markdown, tasks, numeric ordering, durable task status |
+| **Phase 1 — Core Execution Contract** | `plan.md`, root `index.md`, `log.md`, OKF Markdown, tasks, numeric ordering, durable task status |
 | **Phase 2 — Dependencies & Phases** | task dependencies, `phase.md`, phase directories |
 | **Phase 3 — Completion Semantics** | acceptance criteria conventions, completion summaries |
 | **Phase 4–6** | No required new durable structure currently defined |
@@ -43,7 +46,9 @@ A Phase 1 plan MAY look like:
 
 ```text
 plan/
-├── plan.json
+├── index.md
+├── log.md
+├── plan.md
 ├── 010-context.md
 ├── 100-inspect-current-system.md
 ├── 200-implement-change.md
@@ -54,7 +59,9 @@ From Phase 2 onward:
 
 ```text
 plan/
-├── plan.json
+├── index.md
+├── log.md
+├── plan.md
 ├── 010-context.md
 │
 ├── 100-discovery/
@@ -76,43 +83,94 @@ Supporting files and directories MAY coexist with structurally meaningful plan a
 
 ---
 
-# `plan.json`
+# `plan.md`
 
 **Introduced: Phase 1**
 
 Every plan root MUST contain:
 
 ```text
-plan.json
+plan.md
 ```
 
-It contains plan-level metadata and durable plan-level execution state.
+`plan.md` is the durable plan-level concept: the plan document of the execution contract. It is an ordinary OKF concept document whose frontmatter declares a plan-specific `type` and carries the plan's structured metadata and durable plan-level execution state, while its Markdown body carries the human-readable prose description of the plan.
+
+Exactly one plan document MUST exist in a plan directory.
+
+There is no separate machine-readable manifest such as a `plan.json`. The `plan.md` frontmatter is the plan's machine-readable metadata surface.
 
 Example:
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "config-migration",
-  "goal": "Migrate configuration loading to the new provider model",
-  "status": "active",
-  "revision": 1
-}
+```markdown
+---
+type: Execution Plan
+id: config-migration
+title: Configuration loading migration
+description: Execution plan for moving configuration loading onto the provider model.
+schemaVersion: 1
+goal: Migrate configuration loading to the new provider model
+status: proposed
+revision: 1
+sources:
+  - id: masterplan
+    resource: ../grill-me/config-migration-masterplan.md
+    title: Config migration masterplan
+---
+
+# Configuration loading migration
+
+This execution plan migrates configuration loading to the provider-based
+model agreed with the user. The masterplan settled the target
+architecture and interface; this contract covers getting there while
+preserving existing behavior. The legacy loading mechanism is the main
+risk area.
 ```
 
 ## Phase 1 fields
 
-### `schemaVersion`
+### `type`
 
 Required.
 
-Version of the execution-plan directory format.
+The plan-specific OKF concept type. It MUST be:
+
+```yaml
+type: Execution Plan
+```
+
+OKF type values are not centrally registered; this format defines the plan-level type alongside the `Task` and `Phase` types it uses.
 
 ### `id`
 
 Required.
 
 Stable semantic identifier for the plan.
+
+Example:
+
+```yaml
+id: config-migration
+```
+
+As with tasks and phases, semantic identity is the frontmatter `id`, never the filesystem path or filename.
+
+### `title`
+
+Recommended.
+
+Human-readable display name of the plan.
+
+### `description`
+
+Recommended.
+
+One-line summary of the plan, per the OKF `description` family. Index entries, listings, and search snippets consume it.
+
+### `schemaVersion`
+
+Required.
+
+Version of the execution-plan directory format.
 
 ### `goal`
 
@@ -122,9 +180,13 @@ Concise statement of the execution goal.
 
 The goal describes what this execution contract is intended to accomplish. Higher-level planning and requirements discovery are outside this format's responsibility.
 
+The frontmatter `goal` is the concise authoritative form; the body of `plan.md` elaborates it in prose.
+
 ### `status`
 
 Required.
+
+Plan-level execution status.
 
 Initial supported values:
 
@@ -133,6 +195,8 @@ proposed
 active
 completed
 ```
+
+These are execution states, not OKF lifecycle states. See Pending Phase 1 Work for the reconciliation obligation this creates.
 
 ### `revision`
 
@@ -152,23 +216,149 @@ An explicit wall-clock budget for execution of the entire plan.
 
 Example:
 
-```json
-{
-  "timeBudget": "PT4H"
-}
+```yaml
+timeBudget: PT4H
 ```
 
 Durations SHOULD use an unambiguous representation such as ISO 8601 durations.
 
 Plan-level `timeBudget` is an input to budget allocation and live schedule assessment.
 
-Derived values such as time remaining, percentage of budget consumed, expected completion time, or on-track status MUST NOT be persisted in `plan.json`.
+Derived values such as time remaining, percentage of budget consumed, expected completion time, or on-track status MUST NOT be persisted anywhere in the plan directory.
+
+## Provenance
+
+The plan document MAY carry OKF 0.2 provenance using the `sources` frontmatter family, recording what the plan derives from, for example the masterplan artifact that the plan was based on:
+
+```yaml
+sources:
+  - id: masterplan
+    resource: ../grill-me/config-migration-masterplan.md
+    title: Config migration masterplan
+```
+
+Entries follow OKF 0.2: each carries a `resource` naming the source (an absolute URL, a bundle-relative path, or a relative path), and optionally an `id` for per-claim attribution, a `title`, and credibility signals such as `author` and `last_modified`.
+
+How provenance is provided and used is deliberately not fixed by this contract. The concrete conventions belong to the skills and workflows that do the higher-level planning and then integrate with this plugin: they decide which artifacts are recorded, with which ids and labels, and how downstream consumers read them.
+
+pi-reins treats `sources` as provenance only. It does not derive contract obligations from provenance entries and does not execute them.
+
+## Body
+
+The body of `plan.md` is the human-readable prose description of the execution plan: its overall goal and the context agreed with the planning source.
+
+The body is part of the agreed contract. Changes to it are contract-significant.
+
+The body is authored prose, not a generated directory listing. It MUST NOT enumerate tasks or phases. Task and phase discovery stays structural so that no derivable listing is ever persisted as contract content.
 
 ## Task and phase discovery
 
-`plan.json` MUST NOT enumerate tasks or phases.
+Tasks are discovered from OKF frontmatter (`type: Task`), phases from `phase.md` directory markers, and default ordering from numeric path prefixes.
 
-Tasks and phases are discovered from Markdown documents and filesystem structure.
+`plan.md` MUST NOT enumerate tasks or phases: it is the plan document, not a task registry.
+
+The bundle `index.md` MAY list tasks and phases as navigation, but structural discovery MUST NOT depend on it, because the index is regenerable and never authoritative.
+
+---
+
+# `index.md`
+
+**Introduced: Phase 1**
+
+Every plan root MUST contain:
+
+```text
+index.md
+```
+
+The root `index.md` is the bundle index. It keeps strict OKF 0.2 index semantics:
+
+- it is a navigation document for progressive disclosure, not the plan object;
+- it carries no frontmatter except the root `okf_version` declaration;
+- it carries no execution-plan schema fields.
+
+### `okf_version`
+
+Required.
+
+Declares the OKF version the plan directory targets.
+
+MUST be `"0.2"`, the OKF version this contract currently targets.
+
+This is the one key OKF permits on a bundle-root `index.md`. Because the execution-plan schema lives on `plan.md`, the index needs no extension of its own.
+
+### Navigation
+
+The body of the root `index.md` follows the OKF index structure: one or more sections, each grouping the directory's contents under a heading with bulleted links. It navigates to the plan document, phases, tasks, and relevant supporting concepts:
+
+```markdown
+# Execution Plan
+
+* [Configuration loading migration](plan.md) - the plan document: goal, context, and agreed contract
+
+# Tasks
+
+* [Inspect the current system](100-inspect-current-system.md) - understand the existing loading mechanism
+* [Implement the change](200-implement-change.md) - implement the provider-based loader
+* [Verify the result](300-verify-result.md) - confirm existing behavior is preserved
+
+# Supporting Context
+
+* [Context](010-context.md) - background and constraints
+```
+
+Entries SHOULD include the description from the linked document's frontmatter, per OKF. Once phases exist (Phase 2), the index MAY group tasks under their phase directories.
+
+### Non-authoritative navigation
+
+The index is regenerable navigation, never authoritative state:
+
+- structural task and phase discovery MUST NOT depend on it;
+- discrepancies between `index.md` and the actual directory contents resolve in favor of the directory;
+- the plugin MAY regenerate or update it, and consumers MAY synthesize one when it is absent, per OKF;
+- it MUST NOT carry execution state, such as task status, progress, active work, or budget assessments; the derived-state rules apply.
+
+Index files in subdirectories, such as phase directories, follow plain OKF semantics and are optional. Only the plan-root `index.md` is required, because it declares `okf_version`.
+
+---
+
+# `log.md`
+
+**Introduced: Phase 1**
+
+Every plan root MUST contain:
+
+```text
+log.md
+```
+
+The root `log.md` is the plan's change log. It follows the OKF log structure: a flat list of date-grouped prose entries, newest first, under ISO 8601 `YYYY-MM-DD` date headings.
+
+Example:
+
+```markdown
+# Plan Update Log
+
+## 2026-09-03
+* **Update**: Revision 2 accepted. Added the caller-migration task after review.
+
+## 2026-09-01
+* **Creation**: Initial proposed plan, derived from the masterplan.
+```
+
+The log records changes to the execution contract, not execution progress:
+
+- plan creation;
+- accepted plan revisions, one entry per review-gate approval;
+- plan completion or deprecation.
+
+Each accepted revision SHOULD be logged, so the durable history of the contract stays readable from the plan directory itself.
+
+Ordinary execution-state changes such as task status transitions are already durable in task frontmatter and need not be logged.
+
+`log.md` is durable history, not derived state: accepted revisions cannot be recomputed from the current plan contents.
+
+Further `log.md` files MAY appear in subdirectories per OKF. This contract requires only the plan-root instance.
 
 ---
 
@@ -176,11 +366,15 @@ Tasks and phases are discovered from Markdown documents and filesystem structure
 
 **Introduced: Phase 1**
 
-All Markdown files within the plan directory MUST conform to the current OKF standard.
+All Markdown files within the plan directory MUST conform to OKF 0.2.
+
+The targeted OKF version is declared with `okf_version: "0.2"` in the root `index.md`.
 
 Semantic meaning SHOULD be expressed through OKF frontmatter wherever applicable.
 
-Producer-specific frontmatter fields MAY be added for execution-plan semantics.
+Execution-plan-specific frontmatter fields, such as the plan, task, and phase fields this contract defines, are producer-defined extension keys. OKF explicitly permits additional keys, and consumers MUST NOT reject documents carrying unrecognized fields.
+
+Reserved OKF filenames keep their OKF meaning: `index.md` and `log.md` are reserved at every level and never serve as task, phase, or plan documents.
 
 The execution plugin MAY structurally ignore Markdown documents that have no execution-specific meaning.
 
@@ -190,7 +384,9 @@ The execution plugin MAY structurally ignore Markdown documents that have no exe
 
 **Introduced: Phase 1**
 
-Plan Markdown files and, once phases exist, phase directories SHOULD begin with a numeric prefix.
+Task and supporting-context Markdown files and, once phases exist, phase directories SHOULD begin with a numeric prefix.
+
+The reserved filenames (`index.md`, `log.md`) and the plan document (`plan.md`) carry no numeric prefix; they are outside default ordering.
 
 Examples:
 
@@ -728,9 +924,10 @@ The plan directory contains all state that is important enough to survive restar
 Examples of durable state:
 
 ```text
-plan goal
-plan status
+plan document (plan.md: structured metadata and prose description)
+plan execution status
 accepted plan revision
+plan change history (log.md)
 task definitions
 task status
 blocked reasons
@@ -767,7 +964,7 @@ The durable filesystem represents accepted facts and non-derivable execution his
 
 # Derived State
 
-The format SHOULD avoid persisting information that can be reliably recomputed from authoritative fields.
+The format SHOULD avoid persisting information that can be reliably recomputed from authoritative fields. The navigation content of the bundle `index.md` is the one deliberate exception: OKF defines index files as optional and synthesizable by consumers, so the index is regenerable navigation rather than authoritative derived state.
 
 Examples of derived values include:
 
@@ -804,6 +1001,8 @@ Examples of contract-significant changes:
 
 ```text
 goal
+plan identity
+plan prose description (plan.md body)
 task semantic content
 task identity
 task addition/removal
@@ -821,13 +1020,42 @@ The exact enforcement mechanics are outside the scope of this filesystem specifi
 
 ---
 
+---
+
+# Pending Phase 1 Work: OKF 0.2 Compliance
+
+**Note for the Phase 1 Wayfinder map.**
+
+This contract targets OKF 0.2 but does not yet guarantee strict conformance for every plan directory it describes. When planning Phase 1, create a `research` task in the Phase 1 Wayfinder map, followed by a `grilling` task, to verify and reconcile full OKF 0.2 compliance of this execution-plan filesystem format against the upstream specification.
+
+Known points to investigate:
+
+- the plan and task `status` fields reuse the standardized OKF lifecycle `status` family key (`draft`/`stable`/`deprecated`) for execution vocabulary (`proposed`/`active`/`completed`, `pending`/`in_progress`/`blocked`/`done`): decide whether to keep that as a documented extension or to separate execution state from OKF lifecycle;
+- whether plan, task, and phase documents should adopt further OKF families, such as `generated`, `verified`, and `stale_after`;
+- this format requires the root `index.md` and `log.md` and pins `okf_version: "0.2"`, while OKF itself leaves both files optional for producers: verify that strictness level against the upstream conformance rules;
+- what else belongs in `log.md` and with what entry conventions;
+- which of the above are documented OKF extensions, which are conformance gaps, and where the line runs.
+
+The research findings and the settled decisions must be reconciled back into this document, so the format and OKF 0.2 stop contradicting each other.
+
+---
+
 # Summary
 
 The durable format follows these rules:
 
 ```text
-plan.json
-    plan-level metadata, state and optional absolute budget
+plan.md
+    the plan-level concept: structured metadata, execution state,
+    optional absolute budget, optional provenance (sources),
+    plus the prose description of the plan
+
+index.md
+    bundle index: okf_version and progressive-disclosure navigation;
+    regenerable, never authoritative, never the plan object
+
+log.md
+    durable history of contract changes
 
 OKF type: Task documents
     executable units

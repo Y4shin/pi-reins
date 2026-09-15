@@ -1,5 +1,7 @@
 # Phased Implementation Plan
 
+This document defines the plugin's mission, core principles, and phased implementation plan. The durable on-disk representation of the execution contract, the plan directory format, is specified in the companion document [plan-fs-contract.md](plan-fs-contract.md).
+
 ## Mission
 
 Grill-me is for collaboratively developing shared understanding of a plan, from high-level intent down to lower-level decisions. This plugin is for shared understanding during execution: establishing the execution plan up front, making the current execution state visible, steering and enforcing execution within reasonable bounds, and requiring user involvement when the plan needs to change rather than allowing spontaneous, uncoordinated deviation.
@@ -70,7 +72,7 @@ It should not be an advisory todo list that becomes enforceable only in later ph
 
 ## 1.1 Attach to an externally produced plan
 
-The plugin must be able to attach to an existing execution plan and validate that it contains enough information to execute.
+The plugin must be able to attach to an existing execution plan and validate that it contains enough information to execute. The expected shape of such a plan is defined in [plan-fs-contract.md](plan-fs-contract.md).
 
 If the plan is malformed or insufficient, the plugin should report that rather than generating missing higher-level planning itself.
 
@@ -95,7 +97,7 @@ The agent should be able to:
 - resume blocked work;
 - move on to the next appropriate task.
 
-The plugin should keep execution progress synchronized with durable plan state.
+The plugin should keep execution progress synchronized with the durable state of the [plan directory](plan-fs-contract.md#plan-directory).
 
 Sequential execution will commonly have one current task, but the design should permit multiple tasks to be active concurrently where execution is intentionally parallel.
 
@@ -227,7 +229,7 @@ This two-stage interaction is a core feature rather than optional polish.
 
 # Phase 2 — Structured Execution
 
-Phase 2 adds richer execution relationships while preserving the same contract model.
+Phase 2 adds richer execution relationships while preserving the same contract model. The durable representations of [dependencies](plan-fs-contract.md#dependencies) and [phases](plan-fs-contract.md#phases) are defined in the filesystem contract.
 
 ## 2.1 Dependencies
 
@@ -276,7 +278,7 @@ Parallel execution of multiple eligible tasks should remain possible where usefu
 
 # Phase 3 — Completion Semantics
 
-Phase 3 strengthens what it means for the user and agent to agree that work is finished.
+Phase 3 strengthens what it means for the user and agent to agree that work is finished. The durable conventions for acceptance criteria and completion summaries are defined in [Completion Semantics](plan-fs-contract.md#completion-semantics) in the filesystem contract.
 
 ## 3.1 Acceptance expectations
 
@@ -340,7 +342,7 @@ Possible responses include:
 
 The implementation may use ephemeral canonical state or fingerprints for detection.
 
-No separate durable state store is required.
+No separate durable state store is required. The intended split between durable and ephemeral state is defined in [plan-fs-contract.md](plan-fs-contract.md#durable-versus-ephemeral-state).
 
 ---
 
@@ -373,7 +375,7 @@ Once execution semantics are stable, make the plugin easy for external planning 
 
 Potential work includes:
 
-- publishing the execution-plan specification;
+- publishing the execution-plan specification defined in [plan-fs-contract.md](plan-fs-contract.md);
 - schema validation tooling;
 - compatibility/version documentation;
 - stable integration APIs;
@@ -399,7 +401,7 @@ No direct dependency on a specific planning package should be necessary.
 
 # Phase 7 — Budgets and Schedule Awareness
 
-Phase 7 adds time-awareness to the execution contract.
+Phase 7 adds time-awareness to the execution contract. The durable budget and scope fields this phase relies on are defined in [Budget Semantics](plan-fs-contract.md#budget-semantics) in the filesystem contract.
 
 Its purpose is not project-management scheduling. It is to extend shared execution understanding with:
 
@@ -619,7 +621,7 @@ Most implementation details can be resolved incrementally. The following areas d
 
 ## 1. Material deviation boundary
 
-This is the central semantic question.
+This is the central semantic question. The durable-format counterpart, which distinguishes contract-significant changes from execution-state changes, is defined in [plan-fs-contract.md](plan-fs-contract.md#contract-significant-versus-execution-state-changes).
 
 The implementing agent should work through concrete examples of:
 

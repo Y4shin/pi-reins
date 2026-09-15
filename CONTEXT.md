@@ -34,8 +34,9 @@ any authority over what that work is.
 
 **Plan directory**:
 The complete durable representation of an execution contract: a
-filesystem directory holding `plan.json`, task documents, and phase
-directories. Interchange format with external planning systems.
+self-contained OKF 0.2 bundle holding the `plan.md` plan document, task
+documents, phase directories, the bundle `index.md`, and `log.md`.
+Interchange format with external planning systems.
 _Avoid_: state store, database
 
 **Task**:
