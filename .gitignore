@@ -1,0 +1,15 @@
+# Node (package tooling not yet chosen; grown as needed)
+node_modules/
+dist/
+build/
+out/
+coverage/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS noise
+*.log
+.DS_Store

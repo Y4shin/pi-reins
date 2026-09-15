@@ -2,8 +2,10 @@
 
 ## Framework
 
-- _To be filled in once a test framework is chosen (e.g. Vitest, pytest, Go
-  test)._
+- _Not chosen yet._ pi-reins will ship as a Pi extension package,
+  so a TypeScript toolchain (Vitest for unit tests, `tsc --noEmit`
+  for types) is the likely shape once implementation starts. Fill
+  this in when the first code lands.
 - Type checking / linting: _to be filled in._
 
 ## Run commands
