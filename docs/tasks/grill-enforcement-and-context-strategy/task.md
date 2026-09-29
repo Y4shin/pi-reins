@@ -4,7 +4,7 @@ type: grilling
 slug: grill-enforcement-and-context-strategy
 title: Choose the Phase 1 enforcement and context strategy in Pi
 map: phase1-execution-contract
-status: in_progress
+status: done
 blocked_by:
 - research-pi-enforcement-surface
 ---
@@ -144,3 +144,49 @@ prototype task via Wayfinder (the map's Fog holds this candidate).
   task fields are written into plan-fs-contract.md (field sections,
   extension-key lists, contract-significant and execution-state
   classifications, durable-state list) under this task's override note.
+- **E9 (2026-09-29): The injection spike becomes the prototype task
+  `prototype-steering-injection`.** The one unproven composition
+  (context-tail injection), the pushback channel comparison, the
+  before_agent_start frequency check, and the cadence and summary
+  content tuning are handed to a throwaway prototype task in this map,
+  the artifact the map Fog anticipated. The spec consumes its go/no-go
+  verdict; the documented fallback (persistent message plus context
+  filter) applies on no-go.
+- **E10 (2026-09-29): Policy residuals, all as recommended.** (1) The
+  pre-stop impossibility is accepted as the Phase 1 enforcement model:
+  premature conclusion is caught at the completion tool or post-hoc via
+  `agent_settled`; an upstream feature request remains a non-blocking
+  option. (2) `onTerminalInput` is skipped in Phase 1: undocumented API,
+  commands cover interactivity; revisit only if the widget proves
+  insufficient. (3) Concurrent pi sessions on one plan directory are
+  ignored and documented as a known limitation: no evidenced mechanism
+  exists; parallel-active tasks remain representable, parallel-active
+  sessions are not coordinated. (4) Fail-closed gates confirmed: when no
+  UI exists, gates block rather than auto-approve.
+
+## Final decision
+
+Settled 2026-09-29 with the user's explicit confirmation. The Phase 1
+enforcement and context strategy is the seven-surface mechanism set
+recorded in E1 through E10, with per-surface reasoning (in the fixed
+schema: what the surface is, why and toward which goal, the options,
+the choice and why over the others) in briefing.md, which the user
+annotated; the annotations are folded in as amendments.
+
+Dependent-task implications:
+
+- `to-spec` receives the event subscriptions, the `reins_*` tools, the
+  commands, and the UI surface per surface; the attach-time validation
+  surface from the OKF task; the injection design pending the
+  prototype's go/no-go (fallback: persistent message plus context
+  filter); and the tuning defaults from the prototype (cadence N,
+  summary content, nudge wording).
+- `grill-replanning-state-machine` consumes: gate tools with blocking
+  dialogs, terminate and tool swaps at gate boundaries, `appendEntry`
+  gate records with `session_start` reconciliation, the fail-closed
+  policy, and the deviation boundary's change-proposal brief.
+- `prototype-steering-injection` carries the injection go/no-go and the
+  tuning defaults.
+
+Remaining fog: none from this task. Parallel-active-task widget layout
+is a to-spec detail; deeper out-of-band detection stays with Phase 4.

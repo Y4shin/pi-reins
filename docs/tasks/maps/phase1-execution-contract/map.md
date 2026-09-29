@@ -10,6 +10,7 @@ tasks:
   - grill-enforcement-and-context-strategy
   - grill-material-deviation-boundary
   - grill-replanning-state-machine
+  - prototype-steering-injection
 ---
 
 ## Destination
@@ -109,9 +110,9 @@ tasks complete. High-level direction; concrete choices pending their task.)
   including the pinned task-body-structure amendment (three binding H2
   sections under `# Task`).
 - **Enforcement and context strategy (grill-enforcement-and-context-strategy,
-  2026-09-29, in progress):** the seven-surface mechanism set adopted per
-  the task's briefing with amendments: single injection point (context
-  tail, conditional on active execution, every 4th LLM call plus forced
+  2026-09-29):** the seven-surface mechanism set adopted per the task's
+  briefing with amendments: single injection point (context tail,
+  conditional on active execution, every 4th LLM call plus forced
   triggers; no system-prompt layer); two-level completion guard plus a
   fresh-context verifier agent at plan completion; pi-subagents is a
   hard dependency; `reins_progress` writes durable `progressLog` entries
@@ -119,28 +120,30 @@ tasks complete. High-level direction; concrete choices pending their task.)
   drive immediate steering nudges (advisory, never permission); the
   belowEditor widget is the single status surface. Three optional task
   fields amended into the fs-contract under this task's override note.
+  Policy residuals: pre-stop impossibility accepted (upstream request
+  optional), `onTerminalInput` skipped, concurrent sessions documented
+  as a known limitation, fail-closed confirmed. The injection spike
+  became the task `prototype-steering-injection`.
 
 ## Fog
 
-Questions in scope but not yet sharp enough to become tasks:
+All former fog items resolved as of 2026-09-29:
 
-- How exactly the agent reaches the activation gate from within a session
-  (tool, command, or both) is downstream of the enforcement-strategy
-  decision; sharp question once `grill-enforcement-and-context-strategy`
-  lands.
-- The concrete steered-behavior taxonomy (what the compact steering summary
-  contains, and how premature completion, stale state, skipped tasks, and
-  scope expansion are each detected and pushed back on) is downstream of the
-  enforcement strategy and the deviation boundary; sharp question once both
-  grillings land.
-- Whether the Phase 1 steering summary and gates need a Phase 1 prototype
-  (user reacting to a concrete summary/gate artifact) may surface from the
-  enforcement grilling; keep as a candidate, do not create speculatively.
-- The concrete plan-validation surface (what "malformed or insufficient"
-  means structurally for a plan directory) is downstream of the OKF
-  compliance decisions; sharp once `grill-okf-compliance` lands.
-- How pi-reins represents parallel-active tasks in the TUI status line /
-  user visibility surface is downstream of enforcement strategy.
+- Activation-gate reach: settled by the enforcement grilling (user
+  command plus confirm dialog; proposal and review as model-invoked
+  gate tools).
+- Steered-behavior taxonomy: settled by the enforcement grilling and the
+  deviation boundary; summary content and cadence tuning moved to
+  `prototype-steering-injection`.
+- Phase 1 prototype: became the task `prototype-steering-injection`.
+- Plan-validation surface: the §11 hard rules, the OKF profile rules,
+  and the binding-sections checks are recorded for `to-spec` by the OKF
+  grilling and this map's tasks.
+- Parallel-active tasks in the status surface: the widget mechanism is
+  settled (E6 of the enforcement grilling); layout is a `to-spec`
+  detail.
+
+New fog: none.
 
 ## Out of scope
 
