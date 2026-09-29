@@ -4,7 +4,7 @@ type: prototype
 slug: prototype-steering-injection
 title: Prototype the steering summary injection and pushback channels
 map: phase1-execution-contract
-status: ready
+status: done
 blocked_by: []
 ---
 
@@ -76,3 +76,36 @@ fallback design lands in the spec instead.
   user to react to the variants; do not answer that on their behalf.
 - No application code: the prototype must not quietly become production
   code; production behavior is a separate `type: feature` task.
+
+## Execution notes
+
+- First attempt (2026-09-29): the background child built the extension
+  and fake plan, ran smoke rounds plus numbered measurement runs (R10,
+  R11 compaction attempts, cache-behavior and out-of-band artifacts in
+  /tmp/reins-proto-*), and hit the 30-minute single-async run cap before
+  writing findings. The failure cleanup pruned its worktree; the
+  committed prototype is preserved on branch
+  `prototype-steering-injection-rescue` (eb0808c) and the child's
+  session transcript survives. A recovery child wrote the findings from
+  that transcript and the artifacts without re-running the matrix;
+  untested sub-questions are listed there as limitations.
+
+## Result
+
+Done 2026-09-29. Findings in [findings.md](findings.md): **GO** on the
+context-tail injection. 81 injections across 12 measured runs and 198
+LLM calls (requesty / tensorx/glm-5.3) with zero provider rejections;
+a controlled churn benchmark showed a changing tail does not damage
+prefix caching (identical second-call cacheRead with and without
+churn); tail cost measured at ~100-270 un-cached tokens per injected
+call. Pushback channel answered: `sendUserMessage` reliably resumes
+work and caught an actual premature stop in testing; `sendMessage` is
+fire-and-forget and needs a settle-chain waiter. Recommended defaults:
+cadence N = 4 with forced triggers, the minimal summary variant
+(~445 chars), advisory targeted-note nudges overriding cadence.
+Ten named limitations (post-compaction trigger never observed, queued
+follow-ups and tree navigation untested, single provider, the
+fallback's filter half unmeasured, human judgment on variants not
+collected) are recorded as documented risks for to-spec rather than
+new tasks; a cheap follow-up spike can close any that become
+load-bearing.
