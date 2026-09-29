@@ -124,6 +124,18 @@ tasks complete. High-level direction; concrete choices pending their task.)
   optional), `onTerminalInput` skipped, concurrent sessions documented
   as a known limitation, fail-closed confirmed. The injection spike
   became the task `prototype-steering-injection`.
+- **Replanning state machine (grill-replanning-state-machine,
+  2026-09-29):** five states (executing with pending proposals as the
+  normal state; renegotiating; plan-editing; reviewing; abandon path);
+  uniform Change Proposal documents in `proposals/` (type: Change
+  Proposal; additions carry draft task content in the body;
+  materialization at plan-editing; gate 2 polices drift);
+  dispositions approve/defer/reject with deferral suppressing triggers
+  but not membership; a completion walkthrough folds or drops deferred
+  items into user-designated durable locations before the plan
+  completes. plan.md 1.6 rewritten to the recorded model and 1.7's
+  entry condition updated; the fs-contract gains the Change Proposal
+  section under this task's pinned representation override.
 
 ## Fog
 

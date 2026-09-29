@@ -30,7 +30,7 @@ This specification distinguishes between fields and structures available at diff
 
 | Phase | Filesystem capabilities |
 |---|---|
-| **Phase 1: Core Execution Contract** | `plan.md`, root `index.md`, `log.md`, OKF Markdown, tasks, numeric ordering, durable task execution status |
+| **Phase 1: Core Execution Contract** | `plan.md`, root `index.md`, `log.md`, OKF Markdown, tasks, numeric ordering, durable task execution status, change proposals |
 | **Phase 2: Dependencies & Phases** | task dependencies, `phase.md`, phase directories |
 | **Phase 3: Completion Semantics** | acceptance criteria conventions, completion summaries |
 | **Phase 4–6** | No required new durable structure currently defined |
@@ -383,7 +383,7 @@ Semantic meaning SHOULD be expressed through OKF frontmatter wherever applicable
 Frontmatter keys divide into two classes:
 
 - Standard OKF keys this format follows as defined: `title` and `description` (upstream §4.1) and the `sources` provenance family (§5.1). The lifecycle `status` key (§5.4) is reserved for genuine lifecycle use; execution state lives in the `executionStatus` extension key, never in `status`.
-- Producer-defined extension keys: `id`, `schemaVersion`, `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`, `scope`, `completionSummary`, `progressLog`, `expectedPathRegexes`, `expectedBashRegexes`, and `executionStatus` with its value vocabularies. OKF explicitly permits additional keys (§4.1), and consumers MUST NOT reject documents carrying unrecognized fields.
+- Producer-defined extension keys: `id`, `schemaVersion`, `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`, `scope`, `completionSummary`, `progressLog`, `expectedPathRegexes`, `expectedBashRegexes`, `kind`, `target`, `deferred`, `enables`, and `executionStatus` with its value vocabularies. OKF explicitly permits additional keys (§4.1), and consumers MUST NOT reject documents carrying unrecognized fields.
 
 Reserved OKF filenames keep their OKF meaning: `index.md` and `log.md` are reserved at every level and never serve as task, phase, or plan documents.
 
@@ -829,6 +829,123 @@ Renaming or reordering a task file MUST NOT break dependency references.
 
 ---
 
+# Change Proposals
+
+**Introduced: Phase 1**
+
+A change proposal is a durable record of a suggested change to the
+execution contract: the addition, modification, or removal of agreed
+work. Proposals are how material deviations are recorded during
+execution; they are never executed before approval, and renegotiation
+with the user runs over the entire pending set.
+
+Change proposal documents live in a `proposals/` subdirectory at the
+plan root. They are not contract content: creating, editing, and
+deleting them is proposal record-keeping, not a contract-significant
+event. The plan directory's task documents are agreed work and nothing
+else.
+
+Example:
+
+```markdown
+---
+type: Change Proposal
+id: cp-add-cli-migration
+kind: add
+title: Migrate the CLI flags
+dependsOn:
+  - implement-loader
+---
+
+# Change Proposal: Migrate the CLI flags
+
+## Rationale
+
+The current plan no longer suffices because the goal also covers the
+command-line interface, and no task addresses it.
+
+## Proposed task (draft)
+
+id: migrate-cli-flags
+title: Migrate the CLI flags
+
+## Description
+
+Migrate the CLI flag parsing onto the provider model.
+
+## Acceptance Criteria
+
+- The focused CLI tests pass.
+
+## Constraints
+
+- Preserve existing flag names.
+```
+
+## Fields
+
+### `id`
+
+Required. Stable semantic identifier for the proposal.
+
+### `kind`
+
+Required. One of:
+
+```text
+add
+modify
+remove
+```
+
+### `target`
+
+Required for `modify` and `remove`. The `id` of the task document the
+proposal targets.
+
+### `title`
+
+Recommended. Human-readable display name of the proposal.
+
+### `dependsOn`, `enables`
+
+Optional dependency hints in both directions: `dependsOn` lists task
+or proposal ids this proposed work depends on; `enables` lists task ids
+that probably depend on this proposed work. They feed trigger
+evaluation and the finish-line dependency discussion.
+
+### `deferred`
+
+Optional marker. A deferred proposal is parked: it does not trigger
+renegotiation on its own, but it stays in the pending set and
+reappears in every renegotiation session, with guaranteed resurface
+points at exhaustion and via user initiative.
+
+## Body
+
+The body carries the rationale (why the current plan no longer
+suffices, what the agent wants to change, why the change is necessary
+or preferable) and, for `kind: add`, the draft task content: the
+proposed task's id, title, and its three binding sections.
+
+## Lifecycle
+
+A proposal is recorded during execution, never executed before
+approval, and dispositioned at a renegotiation session:
+
+- approved intents are realized during plan-editing (materializing an
+  addition into a task document, applying a modification, deleting a
+  removed task); at review acceptance the proposal document is deleted,
+  its content now contract;
+- rejected proposals are deleted when the renegotiating state ends;
+- deferred proposals stay, marked `deferred`.
+
+Gate 1 approves direction; the materialized result is reviewed at the
+review gate, which polices any drift between an approved sketch and
+its concrete form.
+
+---
+
 # Completion Semantics
 
 **Introduced: Phase 3**
@@ -1028,6 +1145,7 @@ plan document (plan.md: structured metadata and prose description)
 plan execution status
 accepted plan revision
 plan change history (log.md)
+pending change proposals (proposals/)
 task definitions
 task execution status (executionStatus)
 blocked reasons
@@ -1057,7 +1175,7 @@ computed approximate task allocation
 computed phase weight
 ```
 
-In particular, plan-change negotiation is not represented by a separate durable execution directory.
+In particular, the negotiation session itself is not durable state: pending change proposals live in the plan directory (`proposals/`), while in-session approval state and open dialogs remain ephemeral.
 
 The durable filesystem represents accepted facts and non-derivable execution history, while computed assessments and transient control flow remain runtime concerns.
 
@@ -1122,6 +1240,8 @@ During active execution, contract-significant changes are expected to occur only
 
 The exact enforcement mechanics are outside the scope of this filesystem specification.
 
+Change proposal documents under `proposals/` are not contract content: creating, editing, and deleting them is proposal record-keeping. Contract significance attaches to agreed documents only; a change proposal becomes contract content only when an accepted revision materializes it.
+
 ---
 
 # OKF 0.2 Profile
@@ -1135,10 +1255,11 @@ permission:
 - **Additional keys** (permitted, upstream §4.1): `id`, `schemaVersion`,
   `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`,
   `scope`, `completionSummary`, `progressLog`, `expectedPathRegexes`,
-  `expectedBashRegexes`, and `executionStatus` with its value
-  vocabularies.
+  `expectedBashRegexes`, `kind`, `target`, `deferred`, `enables`, and
+  `executionStatus` with its value vocabularies.
 - **Unregistered type values** (permitted, §4.1: type values are not
-  registered centrally): `Execution Plan`, `Task`, `Phase`.
+  registered centrally): `Execution Plan`, `Task`, `Phase`, `Change
+  Proposal`.
 - **Standard keys followed as defined**: `title` and `description`
   (§4.1), `sources` (§5.1), and the lifecycle `status` (§5.4), which is
   reserved for genuine lifecycle use; execution state lives exclusively
@@ -1188,6 +1309,10 @@ index.md
 
 log.md
     durable history of contract changes
+
+change proposals (proposals/)
+    durable records of suggested changes (add, modify, remove);
+    never executed before approval; not contract content
 
 OKF type: Task documents
     executable units

@@ -157,19 +157,26 @@ Controlled replanning is part of the MVP.
 
 Without it, the plugin cannot simultaneously discourage deviation and remain usable when execution inevitably reveals new information.
 
-## 1.6 Change proposal gate
+## 1.6 Change proposals
 
-When the agent believes the agreed execution plan needs to change materially, it must explicitly propose that change.
+When the agent believes the agreed execution plan needs to change materially, it must record the change as a durable change proposal. It must not execute the proposed change, and it must not silently continue as though the proposal were already accepted.
 
-The proposal should communicate:
+A change proposal communicates:
 
 - why the current plan is no longer sufficient;
 - what the agent wants to change;
 - why the change is necessary or preferable.
 
-Execution should not silently continue as though the proposed contract were already accepted.
+Proposals accumulate durably in the plan directory and stay visible to the user. Recording a proposal does not interrupt execution.
 
-The user may approve or reject the proposal.
+Renegotiation with the user is deferred until it becomes necessary:
+
+- when a proposal bears on the task currently being worked on, or on the goal (which bears on every task);
+- when work about to start is entangled with a pending proposal;
+- when no eligible agreed work remains;
+- whenever the agent or the user opens renegotiation deliberately.
+
+A renegotiation session presents all pending proposals. The user may approve, defer, or reject each one.
 
 Approval means:
 
@@ -179,7 +186,7 @@ It does not yet approve the concrete modifications.
 
 ## 1.7 Plan-editing mode
 
-After proposal approval, normal execution pauses.
+After a renegotiation session has approved intents, normal execution pauses.
 
 The agent is allowed to modify the plan so that it represents the newly agreed direction.
 
