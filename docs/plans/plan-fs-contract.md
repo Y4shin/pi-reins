@@ -30,11 +30,11 @@ This specification distinguishes between fields and structures available at diff
 
 | Phase | Filesystem capabilities |
 |---|---|
-| **Phase 1 — Core Execution Contract** | `plan.md`, root `index.md`, `log.md`, OKF Markdown, tasks, numeric ordering, durable task status |
-| **Phase 2 — Dependencies & Phases** | task dependencies, `phase.md`, phase directories |
-| **Phase 3 — Completion Semantics** | acceptance criteria conventions, completion summaries |
+| **Phase 1: Core Execution Contract** | `plan.md`, root `index.md`, `log.md`, OKF Markdown, tasks, numeric ordering, durable task execution status |
+| **Phase 2: Dependencies & Phases** | task dependencies, `phase.md`, phase directories |
+| **Phase 3: Completion Semantics** | acceptance criteria conventions, completion summaries |
 | **Phase 4–6** | No required new durable structure currently defined |
-| **Phase 7 — Budgets** | plan/phase/task time budgets, task scope estimates, durable timing facts |
+| **Phase 7: Budgets** | plan/phase/task time budgets, task scope estimates, durable timing facts |
 
 Later-phase fields MUST NOT be required when reading an earlier-phase plan.
 
@@ -109,7 +109,7 @@ title: Configuration loading migration
 description: Execution plan for moving configuration loading onto the provider model.
 schemaVersion: 1
 goal: Migrate configuration loading to the new provider model
-status: proposed
+executionStatus: proposed
 revision: 1
 sources:
   - id: masterplan
@@ -182,7 +182,7 @@ The goal describes what this execution contract is intended to accomplish. Highe
 
 The frontmatter `goal` is the concise authoritative form; the body of `plan.md` elaborates it in prose.
 
-### `status`
+### `executionStatus`
 
 Required.
 
@@ -196,7 +196,7 @@ active
 completed
 ```
 
-These are execution states, not OKF lifecycle states. See Pending Phase 1 Work for the reconciliation obligation this creates.
+These are execution states, carried in a dedicated extension key rather than the OKF lifecycle `status` family (upstream §5.4). The OKF `status` key is reserved for genuine lifecycle use and MAY be omitted (absent means `stable`); for example, a retired plan can carry `status: deprecated` alongside `executionStatus: completed`.
 
 ### `revision`
 
@@ -342,6 +342,9 @@ Example:
 ## 2026-09-03
 * **Update**: Revision 2 accepted. Added the caller-migration task after review.
 
+## 2026-09-02
+* **Activation**: Plan activated by the user; execution begins.
+
 ## 2026-09-01
 * **Creation**: Initial proposed plan, derived from the masterplan.
 ```
@@ -349,14 +352,19 @@ Example:
 The log records changes to the execution contract, not execution progress:
 
 - plan creation;
+- plan activation, the user-controlled transition from proposed to active;
 - accepted plan revisions, one entry per review-gate approval;
 - plan completion or deprecation.
 
+Entries use a closed leading bold-word vocabulary: `**Creation**`, `**Activation**`, `**Update**` (accepted revisions, referencing the revision number), `**Completion**`, `**Deprecation**`, following the upstream log convention, where §9 fixes structure, not words. The `**Activation**` and `**Update**` entries are written together with the corresponding `verified` event on `plan.md` (see Generated and Verified).
+
 Each accepted revision SHOULD be logged, so the durable history of the contract stays readable from the plan directory itself.
 
-Ordinary execution-state changes such as task status transitions are already durable in task frontmatter and need not be logged.
+Ordinary execution-state changes such as task executionStatus transitions are already durable in task frontmatter and need not be logged.
 
 `log.md` is durable history, not derived state: accepted revisions cannot be recomputed from the current plan contents.
+
+Whether a detected and reconciled out-of-band contract-significant modification earns a log entry is deferred to Phase 4, when detection exists.
 
 Further `log.md` files MAY appear in subdirectories per OKF. This contract requires only the plan-root instance.
 
@@ -372,11 +380,36 @@ The targeted OKF version is declared with `okf_version: "0.2"` in the root `inde
 
 Semantic meaning SHOULD be expressed through OKF frontmatter wherever applicable.
 
-Execution-plan-specific frontmatter fields, such as the plan, task, and phase fields this contract defines, are producer-defined extension keys. OKF explicitly permits additional keys, and consumers MUST NOT reject documents carrying unrecognized fields.
+Frontmatter keys divide into two classes:
+
+- Standard OKF keys this format follows as defined: `title` and `description` (upstream §4.1) and the `sources` provenance family (§5.1). The lifecycle `status` key (§5.4) is reserved for genuine lifecycle use; execution state lives in the `executionStatus` extension key, never in `status`.
+- Producer-defined extension keys: `id`, `schemaVersion`, `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`, `scope`, `completionSummary`, and `executionStatus` with its value vocabularies. OKF explicitly permits additional keys (§4.1), and consumers MUST NOT reject documents carrying unrecognized fields.
 
 Reserved OKF filenames keep their OKF meaning: `index.md` and `log.md` are reserved at every level and never serve as task, phase, or plan documents.
 
 The execution plugin MAY structurally ignore Markdown documents that have no execution-specific meaning.
+
+---
+
+# Generated and Verified
+
+**Introduced: Phase 1**
+
+Plan and task documents MAY carry the OKF 0.2 generation and trust families.
+
+## `generated`
+
+The plugin maintains `generated` (`{ by, at }`, upstream §5.2) on every plan or task document it writes, updating `by` and `at` on each write. The actor is `pi-reins/<version>` for all plugin-mediated writes, including edits made during plan-editing mode. External planners MAY set `generated` when authoring a plan; the family is optional and its absence is never a conformance failure.
+
+Semantics: `generated.at` records content freshness only, the time of the document's last meaningful change, including execution-status transitions. It is explicitly not an execution-timing fact: Phase 7's timing design (active intervals, pauses, elapsed reconstruction) is a separate axis and is unaffected by this field.
+
+## `verified`
+
+The plugin appends a `verified` event (`{ by, at }`, upstream §5.2) to `plan.md` at activation and at each review-gate acceptance, written together with the corresponding `log.md` entry by the same writer, so the two records cannot diverge. Nothing is appended at task completion (agent-claimed, not human-verified) or at rejection.
+
+The actor is `human:<id>` (upstream §7). The id is taken from the git `user.email` of the plan directory's repository when one exists, else the OS username; a plugin configuration override may be introduced later.
+
+Per upstream §5.3, a `human:<id>` actor makes the plan read as human-reviewed to trust-tier-aware consumers: unverified until the user activates it, one event per accepted revision after that.
 
 ---
 
@@ -447,12 +480,18 @@ Example:
 type: Task
 id: implement-loader
 title: Implement the provider-based loader
-status: in_progress
+executionStatus: in_progress
 ---
 
-# Implement the provider-based loader
+# Task
 
-Replace the current configuration-loading mechanism with the provider-based implementation.
+## Description
+
+Implement the provider-based loader: replace the current configuration-loading mechanism with the provider-based implementation.
+
+## Acceptance Criteria
+
+- The focused configuration tests pass.
 
 ## Constraints
 
@@ -476,7 +515,7 @@ id: implement-loader
 
 Task IDs MUST be unique within the plan.
 
-### `status`
+### `executionStatus`
 
 Required once the task participates in execution.
 
@@ -492,7 +531,7 @@ done
 Example:
 
 ```yaml
-status: pending
+executionStatus: pending
 ```
 
 Multiple tasks MAY be `in_progress` concurrently when execution is intentionally parallel.
@@ -506,13 +545,13 @@ Optional in Phase 1.
 SHOULD be present when:
 
 ```yaml
-status: blocked
+executionStatus: blocked
 ```
 
 Example:
 
 ```yaml
-status: blocked
+executionStatus: blocked
 blockedReason: Waiting for a user decision on backwards compatibility.
 ```
 
@@ -594,17 +633,17 @@ plan progress
 
 The body defines the semantic content of the task.
 
-It MAY contain arbitrary OKF-compatible material, including:
+The body MUST be structured as binding sections under a literal `# Task` H1 heading, exactly one per task document:
 
-- description;
-- implementation context;
-- constraints;
-- acceptance criteria;
-- references;
-- relevant architectural information;
-- instructions from an external planning framework.
+- `## Description`: authoritative for interpreting what the task is about, its identity and scope;
+- `## Acceptance Criteria`: what must have been done to call the task done;
+- `## Constraints`: all explicit execution constraints. MAY be empty (an explicit None).
 
-The body is considered part of the agreed task definition.
+All three sections are required. No other H2 heading may appear directly under `# Task`: an unknown direct subheading is a validation error, not advisory prose. Deeper headings inside the three sections are part of their section. Other H1 headings, heading-free top-level text, and top-level H2 through H6 outside the `# Task` section are allowed and advisory: context, rationale, examples, instructions from an external planning framework.
+
+Each binding section binds by its role: Description binds task identity and scope, Acceptance Criteria binds completion conditions, Constraints bind execution boundaries. Advisory prose never binds execution.
+
+The binding sections are part of the agreed task definition; changes to them are contract-significant.
 
 ---
 
@@ -735,9 +774,7 @@ Phase 3 adds durable information explaining when and why tasks are considered co
 
 ## Acceptance criteria
 
-Tasks MAY define explicit acceptance criteria.
-
-These MAY live in the Markdown body, for example:
+Acceptance criteria live in the task's binding `## Acceptance Criteria` section (required since Phase 1, see Tasks):
 
 ```markdown
 ## Acceptance Criteria
@@ -747,14 +784,14 @@ These MAY live in the Markdown body, for example:
 - Relevant tests pass.
 ```
 
-A later schema MAY standardize machine-readable acceptance criteria if required.
+Phase 3 makes the plugin treat this section as the completion contract: it surfaces the criteria as the agent approaches task completion, and completion accounting answers against them. A later schema MAY standardize machine-readable acceptance criteria if required.
 
 ## `completionSummary`
 
 A completed task MAY contain:
 
 ```yaml
-status: done
+executionStatus: done
 completionSummary: >
   Implemented the provider loader and verified the focused
   configuration tests.
@@ -929,7 +966,7 @@ plan execution status
 accepted plan revision
 plan change history (log.md)
 task definitions
-task status
+task execution status (executionStatus)
 blocked reasons
 phase definitions
 dependencies
@@ -991,7 +1028,7 @@ Not every edit to a task document changes the execution contract in the same way
 Examples of ordinary durable execution-state changes:
 
 ```text
-status
+executionStatus
 blockedReason
 completionSummary
 raw timing facts
@@ -1020,23 +1057,50 @@ The exact enforcement mechanics are outside the scope of this filesystem specifi
 
 ---
 
----
+# OKF 0.2 Profile
 
-# Pending Phase 1 Work: OKF 0.2 Compliance
+This format is a self-contained OKF 0.2 bundle. Compliance was verified
+against the upstream specification (OKF v0.2, pinned to upstream commit
+`62432a0`, 2026-08-21): zero hard conformance gaps exist. This profile
+records every extension and deviation, each with its upstream
+permission:
 
-**Note for the Phase 1 Wayfinder map.**
+- **Additional keys** (permitted, upstream §4.1): `id`, `schemaVersion`,
+  `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`,
+  `scope`, `completionSummary`, and `executionStatus` with its value
+  vocabularies.
+- **Unregistered type values** (permitted, §4.1: type values are not
+  registered centrally): `Execution Plan`, `Task`, `Phase`.
+- **Standard keys followed as defined**: `title` and `description`
+  (§4.1), `sources` (§5.1), and the lifecycle `status` (§5.4), which is
+  reserved for genuine lifecycle use; execution state lives exclusively
+  in `executionStatus`.
+- **Adopted optional families**: `generated`, plugin-maintained on its
+  writes as a content-freshness record (§5.2), and `verified`, appended
+  at activation and each review-gate acceptance with `human:` actors
+  (§5.2, §5.3). `stale_after` is deliberately not adopted on plan, task,
+  or phase documents: staleness of an execution contract is a runtime
+  judgment, not an absolute date.
+- **Producer-side structure conventions** (permitted, §3 organization
+  freedom): `plan.md` as the plan-level concept, `phase.md` directory
+  markers, numeric path prefixes as default ordering only, and the
+  binding task body structure (three H2 sections under `# Task`).
+- **Stricter-than-upstream requirements**: the root `index.md` and
+  `log.md` are mandatory and `okf_version: "0.2"` is pinned, while
+  upstream leaves all three optional for producers (§8, §9, §12).
+  Upstream grants permissions, not ceilings, so a stricter producer
+  profile remains conformant; the required files follow §8 and §9
+  exactly.
+- **Dual-identity caveat**: upstream Concept ID is the file path (§2);
+  this format keys stable identity on the `id` extension key. Renaming
+  or re-prefixing a file therefore presents a new concept to generic
+  OKF consumers while preserving identity for this format; upstream
+  consumers MUST tolerate the resulting broken links (§6.1).
 
-This contract targets OKF 0.2 but does not yet guarantee strict conformance for every plan directory it describes. When planning Phase 1, create a `research` task in the Phase 1 Wayfinder map, followed by a `grilling` task, to verify and reconcile full OKF 0.2 compliance of this execution-plan filesystem format against the upstream specification.
-
-Known points to investigate:
-
-- the plan and task `status` fields reuse the standardized OKF lifecycle `status` family key (`draft`/`stable`/`deprecated`) for execution vocabulary (`proposed`/`active`/`completed`, `pending`/`in_progress`/`blocked`/`done`): decide whether to keep that as a documented extension or to separate execution state from OKF lifecycle;
-- whether plan, task, and phase documents should adopt further OKF families, such as `generated`, `verified`, and `stale_after`;
-- this format requires the root `index.md` and `log.md` and pins `okf_version: "0.2"`, while OKF itself leaves both files optional for producers: verify that strictness level against the upstream conformance rules;
-- what else belongs in `log.md` and with what entry conventions;
-- which of the above are documented OKF extensions, which are conformance gaps, and where the line runs.
-
-The research findings and the settled decisions must be reconciled back into this document, so the format and OKF 0.2 stop contradicting each other.
+The §11 hard rules (parseable frontmatter with a non-empty `type` on
+every non-reserved `.md` file, §8/§9 structure on reserved files) and
+this profile's rules are enforced by the attach-time validation
+surface.
 
 ---
 
@@ -1059,7 +1123,8 @@ log.md
 
 OKF type: Task documents
     executable units
-    task-level execution state
+    three binding sections (Description, Acceptance Criteria, Constraints)
+    task-level execution state (executionStatus)
     optional explicit budget or relative scope
 
 phase.md

@@ -1,3 +1,4 @@
-task: null
 slice: null
 schema_version: 3
+map: phase1-execution-contract
+task: null

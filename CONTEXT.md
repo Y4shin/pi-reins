@@ -23,12 +23,16 @@ _Avoid_: project, roadmap, spec
 **Material change**:
 A change that would alter the user's reasonable understanding of what
 the agent agreed to do. The boundary for when user involvement is
-required.
+required. Operational cut: execution freedom covers only work necessary
+to satisfy the current task's binding sections; everything else that
+would alter the agreement becomes a change proposal, never silent
+execution.
 _Avoid_: deviation (ordinary implementation freedom is not one)
 
 **Execution freedom**:
-The agent's autonomy in how it performs agreed work, as distinct from
-any authority over what that work is.
+The agent's autonomy in how it performs agreed work: everything
+necessary to satisfy the current task's binding sections, within their
+constraints. Distinct from any authority over what that work is.
 
 ### The artifact
 
@@ -44,6 +48,12 @@ An executable unit of the contract, declared by OKF Markdown with
 `type: Task`. Identity is the semantic `id`, never the file path or
 numeric prefix.
 _Avoid_: ticket, issue, story
+
+**Binding sections**:
+The three sections of a task document that bind execution: Description
+(identity and scope), Acceptance Criteria (completion conditions), and
+Constraints (execution boundaries). All other prose is advisory.
+_Avoid_: the body (not all of it binds)
 
 **Phase**:
 An aggregation node over its tasks, declared by a `phase.md` in its
@@ -75,7 +85,7 @@ _Avoid_: deadline, schedule
 ### The state
 
 **Execution state**:
-The durable facts of where execution stands: per-task status
+The durable facts of where execution stands: per-task executionStatus
 (pending, in_progress, blocked, done), blocked reasons, completion
 summaries, and raw timing facts.
 _Avoid_: progress (the derived view), UI state
@@ -102,6 +112,19 @@ execution history. Lives only in the plan directory.
 _Avoid_: session state
 
 ### The gates
+
+**Change proposal**:
+A durable, visible record of a suggested change to the execution
+contract: an addition, modification, or deletion of agreed work, with
+optional dependency hints. Never executed before approval.
+_Avoid_: extra work (items also modify and remove), queue (no FIFO
+order implied)
+
+**Renegotiation**:
+The session that opens the replanning workflow over all pending change
+proposals at once; fired by a proposal's coupling with current or
+imminent work, by exhaustion of agreed work, or by initiative.
+_Avoid_: interruption (current work continues until a session fires)
 
 **Proposal gate**:
 The first replanning gate: the agent proposes a change direction, the
@@ -141,9 +164,5 @@ _Avoid_: warning, alarm
 
 ## Unresolved
 
-- The **material deviation boundary** (what counts as material) is a
-  live design question; the specs require practical examples, not just
-  the abstract principle. See docs/plans/plan.md, Deliberate Grilling
-  Surfaces.
 - The **scope-to-weight curve** (how `xs`..`xl` map to relative weights)
   is deferred to Phase 7 execution semantics.

@@ -4,7 +4,7 @@ type: research
 slug: research-pi-enforcement-surface
 title: Map Pi's actual enforcement and interaction capabilities
 map: phase1-execution-contract
-status: ready
+status: done
 blocked_by: []
 ---
 
@@ -91,3 +91,11 @@ becomes a new Wayfinder planning task, per the map's Fog.
 - Mark the task `blocked` with an explanation if a listed requirement has
   no evidenced mechanism at all, so the strategy grilling can treat it as
   a hard constraint.
+
+## Result
+
+Done 2026-09-29. Findings in [research.md](research.md): all seven
+requirements have at least one documented-API mechanism backed by shipped
+examples or prior art; shortlists, doc-vs-prior-art disagreements, and the
+spike questions are in section 9 and feed
+`grill-enforcement-and-context-strategy`.

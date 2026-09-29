@@ -64,7 +64,7 @@ Parallel execution performed through such systems should still be representable 
 
 ---
 
-# Phase 1 — Core Execution Contract
+# Phase 1: Core Execution Contract
 
 Phase 1 is the MVP and MUST already demonstrate the plugin's defining behavior.
 
@@ -151,7 +151,7 @@ The plugin should steer against:
 
 ---
 
-# Phase 1 — Human-in-the-Loop Replanning
+# Phase 1: Human-in-the-Loop Replanning
 
 Controlled replanning is part of the MVP.
 
@@ -227,7 +227,7 @@ This two-stage interaction is a core feature rather than optional polish.
 
 ---
 
-# Phase 2 — Structured Execution
+# Phase 2: Structured Execution
 
 Phase 2 adds richer execution relationships while preserving the same contract model. The durable representations of [dependencies](plan-fs-contract.md#dependencies) and [phases](plan-fs-contract.md#phases) are defined in the filesystem contract.
 
@@ -276,7 +276,7 @@ Parallel execution of multiple eligible tasks should remain possible where usefu
 
 ---
 
-# Phase 3 — Completion Semantics
+# Phase 3: Completion Semantics
 
 Phase 3 strengthens what it means for the user and agent to agree that work is finished. The durable conventions for acceptance criteria and completion summaries are defined in [Completion Semantics](plan-fs-contract.md#completion-semantics) in the filesystem contract.
 
@@ -310,7 +310,7 @@ Completion should emerge from the execution contract rather than from conversati
 
 ---
 
-# Phase 4 — Stronger Change Awareness
+# Phase 4: Stronger Change Awareness
 
 Phase 4 improves the plugin's ability to recognize and present changes to the agreed contract.
 
@@ -346,7 +346,7 @@ No separate durable state store is required. The intended split between durable 
 
 ---
 
-# Phase 5 — Smarter Semantic Steering
+# Phase 5: Smarter Semantic Steering
 
 Once explicit contract mechanics are reliable, the plugin may become better at spotting likely semantic drift.
 
@@ -369,7 +369,7 @@ False-positive-heavy enforcement would work against the plugin's purpose.
 
 ---
 
-# Phase 6 — Interoperability and Ecosystem Polish
+# Phase 6: Interoperability and Ecosystem Polish
 
 Once execution semantics are stable, make the plugin easy for external planning systems to target.
 
@@ -399,7 +399,7 @@ No direct dependency on a specific planning package should be necessary.
 
 ---
 
-# Phase 7 — Budgets and Schedule Awareness
+# Phase 7: Budgets and Schedule Awareness
 
 Phase 7 adds time-awareness to the execution contract. The durable budget and scope fields this phase relies on are defined in [Budget Semantics](plan-fs-contract.md#budget-semantics) in the filesystem contract.
 

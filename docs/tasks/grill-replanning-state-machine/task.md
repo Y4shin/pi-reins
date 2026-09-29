@@ -41,9 +41,16 @@ approval of concrete plan changes
 
 ## Parent decisions it depends on
 
-- `grill-material-deviation-boundary`: the boundary defines the protocol's
-  trigger conditions. The state machine cannot be designed without
-  knowing what counts as material; that is why this task blocks on it.
+- `grill-material-deviation-boundary` (settled 2026-09-29): the boundary
+  and the trigger model are settled inputs, not open design.
+  Renegotiation fires when a change proposal bears on current or
+  imminent work (goal changes bear on all tasks), at exhaustion (no
+  eligible agreed work with proposals pending; plan completion blocked
+  while they are undispositioned), or by initiative (an agent tool and
+  a user slash command, both designed here). Sessions address all
+  pending proposals; work other than the current task is never
+  interrupted (fixup tasks instead). Executing-with-pending-proposals
+  is the normal state; the session is the interrupt.
 - (Informative) `grill-enforcement-and-context-strategy` will have chosen
   the mechanism class for gate interactions and execution blocking; this
   task designs the protocol on top of whatever surfaces exist.
@@ -55,10 +62,13 @@ approval of concrete plan changes
   the plan, no implementation work), review gate (concrete changes
   become authoritative on acceptance, execution resumes; rejection keeps
   execution paused and revising continues).
-- The fs-contract fixes the durable side: the negotiation is ephemeral,
-  proposal approval state and pending-plan-diff state stay in memory, and
-  the durable representation of an accepted change is the revised plan
-  plus a `log.md` entry at revision acceptance.
+- The fs-contract fixes the durable side, as amended by
+  `grill-material-deviation-boundary`: change proposals (additions,
+  modifications, deletions, with dependency hints) are durable and
+  accumulate while execution continues; the negotiation session itself
+  is ephemeral (in-session approval and diff state stay in memory); the
+  durable representation of an accepted change is the revised plan plus
+  a `log.md` entry at revision acceptance.
 - The plan directory is the complete durable representation; no separate
   negotiation directory exists (fs-contract, Durable Versus Ephemeral
   State).
@@ -102,3 +112,10 @@ route it back to Wayfinder rather than improvising.
 - Execution follows `implement-task/resources/grilling.md`: one focused
   question at a time, concrete recommended answer with each, decisions
   recorded in the user's terms, never answering for the user.
+- **Plan-don't-do override (pinned by grill-material-deviation-boundary's
+  close-out, 2026-09-29):** this task applies its settled amendments to
+  the binding specs: the plan.md 1.6 timing amendment (immediate
+  proposal becomes record-as-change-proposal, renegotiate when
+  load-bearing) and the fs-contract's durable change-proposal
+  representation, its shape (a proposed-style task status or otherwise)
+  coordinated with grill-okf-compliance's status-naming decision.

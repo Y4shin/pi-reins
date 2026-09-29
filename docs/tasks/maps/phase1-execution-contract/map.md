@@ -71,6 +71,43 @@ tasks complete. High-level direction; concrete choices pending their task.)
 - **Research source boundary (enforcement surface)**: bundled
   pi-coding-agent documentation plus local extensions (task-workflow,
   pi-subagents, pi-telemetry, browser-goblin) as prior art.
+- **Materiality test (grill-material-deviation-boundary, 2026-09-29):** the
+  surprise test is the semantic standard; the structural contract-significant
+  test is its code-enforced proxy; ambiguity resolves toward proposing; every
+  Phase 1 spec trigger is labeled code-enforced or agent-judged.
+- **Implied-work line, change proposals, and binding sections
+  (grill-material-deviation-boundary, 2026-09-29):** only work necessary
+  to satisfy an agreed task's binding sections is execution freedom;
+  customary artifacts (tests, doc updates) must be grounded in them.
+  Material deviations become durable, visible change proposals, never
+  executed before approval. Renegotiation fires when a proposal bears on
+  current or imminent work (goal changes bear on all tasks), at
+  exhaustion (no eligible agreed work with proposals pending; plan
+  completion blocked while undispositioned), or by initiative (agent
+  tool, user slash command); every session addresses all pending
+  proposals; a proposal about other work never interrupts the current
+  task (fixup tasks instead). This amends plan.md 1.6's
+  immediate-proposal timing; the mechanics feed
+  grill-replanning-state-machine. Task documents carry exactly three
+  binding H2 sections (Description, Acceptance Criteria, Constraints)
+  under a literal `# Task` H1; all other prose and headings outside it
+  are advisory; all three required at activation, Constraints may be
+  empty; unknown H2s under `# Task` fail activation; this amends the
+  fs-contract task body structure and converges with its Phase 3
+  convention.
+- **OKF 0.2 compliance decisions (grill-okf-compliance, 2026-09-29):**
+  the execution-status key is renamed to `executionStatus` and the OKF
+  `status` key reverts to its lifecycle meaning; `verified` events
+  (git-email human ids) append at activation and each review-gate
+  acceptance; `generated` is plugin-maintained as a content-freshness
+  record, explicitly not a Phase 7 timing fact; log.md gains the
+  Activation entry and a closed bold-word vocabulary; the required root
+  index/log and pinned okf_version strictness is kept; the Pending
+  Phase 1 Work section is replaced by an OKF 0.2 profile note;
+  `stale_after` is not adopted; the §11 hard rules become attach-time
+  validation checks. All edits are applied to plan-fs-contract.md,
+  including the pinned task-body-structure amendment (three binding H2
+  sections under `# Task`).
 
 ## Fog
 

@@ -4,7 +4,7 @@ type: research
 slug: research-okf-compliance
 title: Verify the execution-plan format against upstream OKF 0.2
 map: phase1-execution-contract
-status: ready
+status: done
 blocked_by: []
 ---
 
@@ -95,3 +95,10 @@ new tasks, unless they open a genuinely separate decision.
 - Mark the task `blocked` if the upstream spec cannot be retrieved or a
   verdict cannot be reached from the trusted sources, and explain what is
   missing.
+
+## Result
+
+Done 2026-09-29. Findings in [research.md](research.md): 10 items audited
+(5 conformant, 3 conformant extensions, 0 compliance gaps), recommendations
+R1 through R6, and four user questions; the user questions are settled in
+`grill-okf-compliance`.
