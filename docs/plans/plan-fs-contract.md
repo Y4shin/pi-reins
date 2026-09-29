@@ -383,7 +383,7 @@ Semantic meaning SHOULD be expressed through OKF frontmatter wherever applicable
 Frontmatter keys divide into two classes:
 
 - Standard OKF keys this format follows as defined: `title` and `description` (upstream §4.1) and the `sources` provenance family (§5.1). The lifecycle `status` key (§5.4) is reserved for genuine lifecycle use; execution state lives in the `executionStatus` extension key, never in `status`.
-- Producer-defined extension keys: `id`, `schemaVersion`, `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`, `scope`, `completionSummary`, and `executionStatus` with its value vocabularies. OKF explicitly permits additional keys (§4.1), and consumers MUST NOT reject documents carrying unrecognized fields.
+- Producer-defined extension keys: `id`, `schemaVersion`, `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`, `scope`, `completionSummary`, `progressLog`, `expectedPathRegexes`, `expectedBashRegexes`, and `executionStatus` with its value vocabularies. OKF explicitly permits additional keys (§4.1), and consumers MUST NOT reject documents carrying unrecognized fields.
 
 Reserved OKF filenames keep their OKF meaning: `index.md` and `log.md` are reserved at every level and never serve as task, phase, or plan documents.
 
@@ -553,6 +553,69 @@ Example:
 ```yaml
 executionStatus: blocked
 blockedReason: Waiting for a user decision on backwards compatibility.
+```
+
+### `expectedPathRegexes`
+
+Optional.
+
+A list of regular expressions over the write targets this task is
+expected to touch: the path arguments of file-writing tools and
+equivalent file arguments of shell commands. The field is advisory and
+declares expectation, never permission; it does not constrain execution,
+and the binding boundaries remain the task's Constraints section. The
+plugin uses it to steer: a write attempt matching none of the declared
+expressions triggers an immediate steering nudge with a targeted note.
+A task without this field gets no path-based triggering.
+
+Example:
+
+```yaml
+expectedPathRegexes:
+  - "^src/config/"
+  - "^tests/config/"
+```
+
+### `expectedBashRegexes`
+
+Optional.
+
+A list of regular expressions over the shell commands this task is
+expected to run, matched against the command line. Like
+`expectedPathRegexes`, the field is advisory: declared expectation, not
+permission. A command matching none of the declared expressions
+triggers the immediate steering nudge. A task without this field gets
+no command-based triggering. Under-declared lists make the nudge
+frequent; tuning them is normal plan maintenance.
+
+Example:
+
+```yaml
+expectedBashRegexes:
+  - "^npm (install|run|test)"
+  - "^git (add|commit|status)"
+```
+
+### `progressLog`
+
+Optional.
+
+Durable progress updates the agent records while executing the task, as
+an append-only list of entries, each carrying `at` (an ISO 8601
+datetime) and `note` (a short progress message). The plugin surfaces the
+most recent entry on the user-facing status surface and retains the full
+list for audit. Progress updates are ordinary execution-state changes:
+they never require user involvement and never belong in `log.md`. The
+plugin MUST NOT rewrite, prune, or summarize past entries.
+
+Example:
+
+```yaml
+progressLog:
+  - at: 2026-09-29T15:30:00Z
+    note: Installed the agreed upon packages
+  - at: 2026-09-29T15:42:00Z
+    note: Writing the red tests
 ```
 
 ## Phase 7 task metadata
@@ -971,6 +1034,7 @@ blocked reasons
 phase definitions
 dependencies
 completion summaries
+task progress updates (progressLog)
 explicit time budgets
 task scope estimates
 non-derivable timing facts needed for recovery
@@ -1031,6 +1095,7 @@ Examples of ordinary durable execution-state changes:
 executionStatus
 blockedReason
 completionSummary
+progressLog
 raw timing facts
 ```
 
@@ -1046,6 +1111,8 @@ task addition/removal
 phase structure
 dependencies
 constraints
+expectedPathRegexes
+expectedBashRegexes
 acceptance criteria
 scope
 timeBudget
@@ -1067,7 +1134,8 @@ permission:
 
 - **Additional keys** (permitted, upstream §4.1): `id`, `schemaVersion`,
   `goal`, `revision`, `blockedReason`, `dependsOn`, `timeBudget`,
-  `scope`, `completionSummary`, and `executionStatus` with its value
+  `scope`, `completionSummary`, `progressLog`, `expectedPathRegexes`,
+  `expectedBashRegexes`, and `executionStatus` with its value
   vocabularies.
 - **Unregistered type values** (permitted, §4.1: type values are not
   registered centrally): `Execution Plan`, `Task`, `Phase`.

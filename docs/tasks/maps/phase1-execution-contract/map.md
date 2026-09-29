@@ -108,6 +108,17 @@ tasks complete. High-level direction; concrete choices pending their task.)
   validation checks. All edits are applied to plan-fs-contract.md,
   including the pinned task-body-structure amendment (three binding H2
   sections under `# Task`).
+- **Enforcement and context strategy (grill-enforcement-and-context-strategy,
+  2026-09-29, in progress):** the seven-surface mechanism set adopted per
+  the task's briefing with amendments: single injection point (context
+  tail, conditional on active execution, every 4th LLM call plus forced
+  triggers; no system-prompt layer); two-level completion guard plus a
+  fresh-context verifier agent at plan completion; pi-subagents is a
+  hard dependency; `reins_progress` writes durable `progressLog` entries
+  on the active task; `expectedPathRegexes` and `expectedBashRegexes`
+  drive immediate steering nudges (advisory, never permission); the
+  belowEditor widget is the single status surface. Three optional task
+  fields amended into the fs-contract under this task's override note.
 
 ## Fog
 
