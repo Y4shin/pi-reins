@@ -49,6 +49,143 @@ const ADD_PARAMS = {
   constraints: "- Preserve existing flag names.",
 };
 
+describe("reins_propose_change: malformed proposals are refused at recording time", () => {
+  test("refuses an unknown kind, naming the vocabulary", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "transform",
+      rationale: "The plan needs a different shape.",
+    });
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("add, modify, remove");
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+
+  test("refuses an addition without its draft task content", async () => {
+    const h = await executingHarness();
+    const base = { kind: "add", id: "cp-incomplete", rationale: "Coverage is missing." };
+
+    const noId = await h.dispatchTool("reins_propose_change", {
+      ...base,
+      proposedTitle: "X",
+      description: "d",
+      acceptanceCriteria: "a",
+      constraints: "c",
+    });
+    expect(noId.isError).toBe(true);
+    expect(noId.message).toContain("proposedId");
+
+    const noCriteria = await h.dispatchTool("reins_propose_change", {
+      ...base,
+      proposedId: "some-task",
+      proposedTitle: "X",
+      description: "d",
+      constraints: "c",
+    });
+    expect(noCriteria.isError).toBe(true);
+    expect(noCriteria.message).toContain("acceptanceCriteria");
+
+    const noConstraints = await h.dispatchTool("reins_propose_change", {
+      ...base,
+      proposedId: "some-task",
+      proposedTitle: "X",
+      description: "d",
+      acceptanceCriteria: "a",
+    });
+    expect(noConstraints.isError).toBe(true);
+    expect(noConstraints.message).toContain("constraints");
+
+    // None of the refusals wrote anything durable.
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+
+  test("refuses a proposal without a rationale", async () => {
+    const h = await executingHarness();
+
+    for (const rationale of [undefined, "", "   "]) {
+      const outcome = await h.dispatchTool("reins_propose_change", {
+        kind: "add",
+        id: "cp-no-rationale",
+        rationale,
+        proposedId: "t",
+        proposedTitle: "T",
+        description: "d",
+        acceptanceCriteria: "a",
+        constraints: "c",
+      });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.message).toContain("rationale");
+    }
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+
+  test("refuses a proposal id that already exists or collides with a reserved filename", async () => {
+    const h = await executingHarness();
+
+    const duplicate = await h.dispatchTool("reins_propose_change", {
+      ...ADD_PARAMS,
+      id: "cp-add-cli-migration", // the fixture's own proposal
+    });
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.message).toContain("cp-add-cli-migration");
+
+    const reserved = await h.dispatchTool("reins_propose_change", {
+      ...ADD_PARAMS,
+      id: "index",
+    });
+    expect(reserved.isError).toBe(true);
+    expect(reserved.message).toContain("index");
+
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+
+  test("refuses dependency hints that are not lists of ids", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "add",
+      id: "cp-bad-deps",
+      rationale: "Ordering matters here.",
+      proposedId: "t",
+      proposedTitle: "T",
+      description: "d",
+      acceptanceCriteria: "a",
+      constraints: "c",
+      dependsOn: "inspect-current-system",
+    });
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("dependsOn");
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+
+  test("writes optional dependency hints and a generated id when kind add omits one", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "add",
+      rationale: "The goal also covers the CLI.",
+      title: "Migrate the CLI flags",
+      proposedId: "migrate-cli-flags",
+      proposedTitle: "Migrate the CLI flags",
+      description: "d",
+      acceptanceCriteria: "a",
+      constraints: "c",
+      dependsOn: ["inspect-current-system"],
+      enables: ["implement-change"],
+    });
+
+    expect(outcome.isError).toBe(false);
+    const text = h.readPlanFile("proposals/cp-add-migrate-the-cli-flags.md");
+    const frontmatter = frontmatterOf(text);
+    expect(frontmatter.id).toBe("cp-add-migrate-the-cli-flags");
+    expect(frontmatter.dependsOn).toEqual(["inspect-current-system"]);
+    expect(frontmatter.enables).toEqual(["implement-change"]);
+  });
+});
+
 describe("reins_propose_change: modify and remove require a resolvable target", () => {
   test("records a modification with the target task id", async () => {
     const h = await executingHarness();

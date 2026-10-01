@@ -111,6 +111,61 @@ function findTask(scan: PlanScan, taskId: string): boolean {
   return scan.tasks.some((candidate) => candidate.frontmatter.id === taskId);
 }
 
+/**
+ * Optional dependency hints: when present, a list of non-empty ids.
+ * They are hints, not resolved references: dependsOn may name proposal
+ * ids recorded later, so recording checks shape only.
+ */
+function idListParam(params: Record<string, unknown>, name: "dependsOn" | "enables"): string[] | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || (entry as string).trim() === "")) {
+    throw new Error(
+      `reins_propose_change: ${name} must be a list of task or proposal ids when given (got: ${JSON.stringify(value)}).`,
+    );
+  }
+  return value as string[];
+}
+
+/** Reserved filenames keep their OKF meaning at every level, including under proposals/. */
+const RESERVED_NAMES = new Set(["index", "log"]);
+
+/** The proposal ids already recorded in the plan directory. */
+function existingProposalIds(deps: ReinsDeps): Set<string> {
+  if (!deps.fs.exists("proposals")) return new Set();
+  return new Set(
+    deps.fs
+      .list("proposals")
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => file.slice("proposals/".length, -".md".length)),
+  );
+}
+
+/**
+ * Resolve the new proposal's id: a caller-provided id is refused when
+ * it already exists or would sit on a reserved filename; a generated
+ * id is deduplicated with a numeric suffix instead.
+ */
+function resolveProposalId(providedId: string | undefined, base: string, existing: Set<string>): string {
+  if (providedId !== undefined) {
+    if (existing.has(providedId)) {
+      throw new Error(
+        `reins_propose_change: a proposal with id "${providedId}" already exists; choose a different id.`,
+      );
+    }
+    if (RESERVED_NAMES.has(providedId)) {
+      throw new Error(
+        `reins_propose_change: the proposal id "${providedId}" collides with a reserved filename ` +
+          "(index.md and log.md are reserved at every level).",
+      );
+    }
+    return providedId;
+  }
+  let id = base;
+  for (let n = 2; existing.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
 /** Record a change proposal: writes a proposal document under proposals/. */
 export async function proposeChange(
   deps: ReinsDeps,
@@ -153,22 +208,37 @@ export async function proposeChange(
   }
 
   const proposedId = params.proposedId;
-  if (proposalKind === "add" && (typeof proposedId !== "string" || proposedId.trim() === "")) {
-    throw new Error("reins_propose_change: proposedId is required for kind add (the draft task's semantic id).");
+  if (proposalKind === "add") {
+    const missing = (
+      [
+        ["proposedId", proposedId],
+        ["proposedTitle", params.proposedTitle],
+        ["description", params.description],
+        ["acceptanceCriteria", params.acceptanceCriteria],
+        ["constraints", params.constraints],
+      ] as Array<[string, unknown]>
+    )
+      .filter(([, value]) => typeof value !== "string" || (value as string).trim() === "")
+      .map(([name]) => name);
+    if (missing.length > 0) {
+      throw new Error(
+        `reins_propose_change: kind add requires the draft task content: ${missing.join(", ")}.`,
+      );
+    }
   }
 
-  const proposedTitle =
-    typeof params.proposedTitle === "string" && params.proposedTitle.trim() !== ""
-      ? params.proposedTitle
-      : (proposedId as string);
+  const dependsOn = idListParam(params, "dependsOn");
+  const enables = idListParam(params, "enables");
+
+  const draftTitle = typeof params.proposedTitle === "string" ? params.proposedTitle : (proposedId as string);
   const title =
     typeof params.title === "string" && params.title.trim() !== ""
       ? params.title
       : proposalKind === "add"
-        ? proposedTitle
+        ? draftTitle
         : (target as string);
   const providedId = typeof params.id === "string" && params.id.trim() !== "" ? params.id.trim() : undefined;
-  const proposalId = providedId ?? `cp-${proposalKind}-${slugify(title)}`;
+  const proposalId = resolveProposalId(providedId, `cp-${proposalKind}-${slugify(title)}`, existingProposalIds(deps));
 
   const frontmatter: FrontmatterData = {
     type: "Change Proposal",
@@ -177,12 +247,14 @@ export async function proposeChange(
     generated: { by: generatedBy(), at: deps.now() },
   };
   if (target !== undefined) frontmatter.target = target;
+  if (dependsOn !== undefined) frontmatter.dependsOn = dependsOn;
+  if (enables !== undefined) frontmatter.enables = enables;
   const body = composeProposalBody({
     kind: proposalKind,
     title,
     rationale,
     proposedId: typeof proposedId === "string" ? proposedId : undefined,
-    proposedTitle,
+    proposedTitle: draftTitle,
     description: typeof params.description === "string" ? params.description : undefined,
     acceptanceCriteria: typeof params.acceptanceCriteria === "string" ? params.acceptanceCriteria : undefined,
     constraints: typeof params.constraints === "string" ? params.constraints : undefined,
