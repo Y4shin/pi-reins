@@ -51,6 +51,25 @@ describe("activation log record", () => {
     // Newest first: the activation date group precedes the existing one.
     expect(log.indexOf("## 2026-10-01")).toBeLessThan(log.indexOf("## 2026-09-01"));
   });
+  test("a log without a Creation entry gains one; Activation lands above it", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: true },
+    });
+    await h.runCommand("reins-attach", "plan");
+    // An external planner may deliver a log without a Creation entry.
+    h.writePlanFile("log.md", "# Plan Update Log\n");
+
+    await h.runCommand("reins-activate");
+
+    const log = h.readPlanFile("log.md");
+    expect(log).toContain("* **Activation**: Plan activated by the user; execution begins.");
+    expect(log).toContain("* **Creation**:");
+    // Both entries land under the activation date, Activation newest-first.
+    const group = log.slice(log.indexOf("## 2026-10-01"));
+    expect(group.indexOf("**Activation**")).toBeLessThan(group.indexOf("**Creation**"));
+  });
 });
 
 describe("reins-activate refusals", () => {

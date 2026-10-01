@@ -18,7 +18,7 @@
 
 import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
-import { prependLogEntry, writeFields } from "../plan/write.js";
+import { logHasEntry, prependLogEntry, writeFields } from "../plan/write.js";
 import { transition, type ReinsPhase, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
 
@@ -78,6 +78,12 @@ export async function activate(
   }
 
   writeFields(deps, scan.plan.file, { executionStatus: "active" });
+  // The log records contract changes from creation onward; an external
+  // planner may not have written a Creation entry, so activation
+  // ensures one exists rather than leaving the history headless.
+  if (!logHasEntry(deps.fs, "Creation")) {
+    prependLogEntry(deps, "Creation", "Initial proposed plan.");
+  }
   prependLogEntry(deps, "Activation", "Plan activated by the user; execution begins.");
   const nextState = transition(state, "executing");
   deps.session.appendEntry(ACTIVATED_ENTRY_TYPE, { planDir, phase: nextState.phase });
