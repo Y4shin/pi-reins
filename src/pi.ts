@@ -26,11 +26,13 @@ import type {
 } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { guardPlanDirWrites } from "./handlers/tool-call.js";
+import { openRenegotiationSession } from "./handlers/renegotiate.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 import { createTaskTools } from "./tools/task.js";
 import { createProposeTool } from "./tools/propose.js";
+import { createRenegotiateTool } from "./tools/renegotiate.js";
 
 /** The custom message type used for the context-tail steering summary. */
 export { STEERING_MESSAGE_TYPE } from "./steering/engine.js";
@@ -83,12 +85,29 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
     },
   });
 
+  // The user's deliberate opening of the renegotiation gate. Opening
+  // it terminates the current run at the gate.
+  pi.registerCommand("reins-renegotiate", {
+    description:
+      "Open the renegotiation gate: present every pending change proposal for approve, defer, or reject",
+    handler: async (_args, ctx) => {
+      const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
+      const outcome = await openRenegotiationSession(commandDeps, state, { kind: "initiative" });
+      state = outcome.state;
+      if (outcome.result.terminateRun) ctx.abort();
+    },
+  });
+
   // The task lifecycle tools are the only write path into task state;
   // they read the live state and execute against deps rooted at the
   // plan directory (the harness's createDeps override honors fsRoot).
+  // setState lets a gate transition (renegotiation) propagate.
   for (const tool of createTaskTools({
     deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
     state: () => state,
+    setState: (next) => {
+      state = next;
+    },
   })) {
     pi.registerTool(tool);
   }
@@ -97,6 +116,20 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
     createProposeTool({
       deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
       state: () => state,
+      setState: (next) => {
+        state = next;
+      },
+    }),
+  );
+
+  // The agent's deliberate opening of the renegotiation gate.
+  pi.registerTool(
+    createRenegotiateTool({
+      deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+      state: () => state,
+      setState: (next) => {
+        state = next;
+      },
     }),
   );
 

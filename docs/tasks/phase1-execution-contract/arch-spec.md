@@ -261,9 +261,11 @@ side effects; skipped when the pi binary is absent).
   incomplete contract, a settled run triggers a corrective run seeded
   by `sendUserMessage` listing remaining work, chain capped at
   pushbackMax (default 2), counter reset by a user-submitted prompt;
-  the tool sets `state.completionAttempted` (forcing injection).
+  the tool sets `state.completionAttempted` (forcing injection; the
+  engine one-shot-clears the flag on the injection that consumes it).
 - Existing abstractions: remaining-work listing from the status
-  internals; messenger port; SteeringPort.
+  internals (`contractStatus`'s `remaining` field,
+  `src/tools/task.ts`); messenger port; SteeringPort.
 - Do NOT: use text heuristics on assistant messages; react in
   agent_end (retries may follow); fire when state is clean or no
   contract is active.
@@ -276,18 +278,21 @@ side effects; skipped when the pi binary is absent).
 
 ## 8. out-of-band-detection (size: l)
 
-- Exports: `src/plan/fingerprint.ts` `fingerprintContract(scan)`
-  (canonical hash over contract-significant content only, per the
-  fs-contract split: never executionStatus, blockedReason,
-  completionSummary, progressLog, or proposals; unparseable files are
-  hashed by raw content so partial writes are detected, never crash)
-  and `snapshotPlanDir(fs, root)` (in-memory file map); the
-  session_start-scoped watcher (fs.watch plus polling fallback with
-  unref'd timers, session_shutdown cleanup); turn-boundary comparison
-  plus turn-end drift verification against observed plugin writes; the
-  reaction: notify the user, steer the model, enter reconciling (the
-  tool_call guard blocks mutations), reconciliation dialog resumes
-  executing on accept.
+- Exports: `fingerprintContract(scan)` added to
+  `src/plan/fingerprint.ts` beside the landed `PlanSnapshot` and
+  `snapshotPlanDir(fs, root)` (the in-memory file map, pre-implemented
+  by renegotiation-session, snapshot half only; the module doc defers
+  the fingerprint half to this ticket): the canonical hash over
+  contract-significant content only, per the fs-contract split (never
+  executionStatus, blockedReason, completionSummary, progressLog, or
+  proposals; unparseable files are hashed by raw content so partial
+  writes are detected, never crash); the session_start-scoped watcher
+  (fs.watch plus polling fallback with unref'd timers,
+  session_shutdown cleanup); turn-boundary comparison plus turn-end
+  drift verification against observed plugin writes; the reaction:
+  notify the user, steer the model, enter reconciling (the tool_call
+  guard blocks mutations), reconciliation dialog resumes executing on
+  accept.
 - Existing abstractions: file-trigger.ts (watcher example);
   pi-subagents watch-strategy (fallback prior art); the tool_call
   guard; PlanScan.
@@ -297,9 +302,12 @@ side effects; skipped when the pi binary is absent).
 - Seams: hand edits between fired runs detected at the boundary;
   watcher plus fallback behavior; reconciliation gate; partial-write
   tolerance.
-- Interface contract: `snapshotPlanDir` is reused by
-  plan-editing-review for the pre-session snapshot, the review diff,
-  and the abandon restore.
+- Interface contract: `snapshotPlanDir` and `PlanSnapshot` are landed
+  shared surface; the pre-session snapshot is already taken inside
+  `openRenegotiationSession` and reaches plan-editing-review as
+  `RenegotiationOutcome.snapshot`, so ticket 11 reuses the snapshot
+  value for the review diff and the abandon restore rather than
+  re-taking the pre-session snapshot itself.
 
 ## 9. renegotiation-session (size: l)
 
@@ -333,14 +341,17 @@ side effects; skipped when the pi binary is absent).
 
 ## 10. expected-declaration-nudges (size: s)
 
-- Exports: the tool_call observation leg: extract write targets (path
-  arguments of edit and write plus best-effort file arguments of shell
-  commands) and command lines; match against the union of the active
-  tasks' `expectedPathRegexes` and `expectedBashRegexes`; on no match
-  call `forceInject("expected-declaration", note)` with a targeted
-  note naming the deviation.
-- Existing abstractions: the tool_call handler composition point;
-  SteeringPort.
+- Exports: the tool_call observation leg: consume the guard's exported
+  `rawWriteTargets(event)` and `shellWriteTargets(command)`
+  (`src/handlers/tool-call.ts`) plus the raw command lines from the
+  events; match against the union of the active tasks'
+  `expectedPathRegexes` and `expectedBashRegexes`; on no match call
+  `forceInject("expected-declaration", note)` with a targeted note
+  naming the deviation.
+- Existing abstractions: the tool_call guard's exported composition
+  surface (`rawWriteTargets`, `shellWriteTargets`); SteeringPort
+  (`forceInject`, queued on the port and drained by the engine's
+  `takeForced` mailbox).
 - Do NOT: block or rewrite the call; treat the lists as permission;
   trigger for tasks without the fields.
 - Seams: synthetic tool_call events with declared and undeclared
@@ -351,7 +362,10 @@ side effects; skipped when the pi binary is absent).
 
 ## 11. plan-editing-review (size: xl)
 
-- Exports: plan-editing tools gated on approved intents:
+- Exports: plan-editing tools gated on the session's approved intents
+  (`RenegotiationOutcome.approved`, each `ApprovedIntent` a
+  `proposalId`, `kind`, and optional `target`, from
+  `openRenegotiationSession` in `src/handlers/renegotiate.ts`):
   `reins_materialize_add(proposalId)` (creates the task document from
   the draft: id, title, binding sections, executionStatus pending,
   next numeric prefix, `generated` stamp), `reins_edit_task(taskId,
@@ -359,46 +373,62 @@ side effects; skipped when the pi binary is absent).
   (requires an approved modify intent on that task; frontmatter
   extensions beyond executionStatus stay out of Phase 1 editing),
   `reins_remove_task(taskId)` (requires an approved remove intent);
-  `reins_finish_revision()` entering reviewing; the review dialog
-  presenting the concrete diff between the pre-session snapshot and
-  the current state (added, removed, and changed tasks with
-  binding-section diffs) with accept, reject (returns to
-  plan-editing), and abandon (restores the snapshot, proposals stay
-  pending, return to executing); acceptance bumps the revision and
-  writes the log Update entry together with the `verified` event by
-  the same writer, deletes applied proposal documents, restores the
-  tool set; enforcement: entering plan-editing swaps edit and write
-  out of the active tool set, the tool_call guard inverts to block
-  writes outside the plan directory (raw writes into the plan
-  directory remain blocked in every state); crash recovery at
-  session_start: leftover gate records resume in executing, a durable
-  review acceptance (log Update plus bumped revision) is honored,
-  pending proposals survive, and on-disk content is authoritative
-  (materialized-but-unaccepted content surviving a crash is a
-  documented residual; materialization refuses duplicate ids so a
-  re-run session stays safe).
-- Existing abstractions: snapshotPlanDir and diff; setActiveTools;
-  write utilities for revision, log, and verified events; requireUi;
-  proposal dispositions.
+  `reins_finish_revision()` entering reviewing (its tool IO carries
+  the required `setState` accessor: reviewing and the post-dialog
+  returns happen inside a tool execution); the review dialog
+  presenting the concrete diff between the pre-session snapshot (the
+  session's `RenegotiationOutcome.snapshot`, a `PlanSnapshot` from
+  `src/plan/fingerprint.ts`) and the current state (added, removed,
+  and changed tasks with binding-section diffs) with accept, reject
+  (returns to plan-editing), and abandon (restores the snapshot,
+  proposals stay pending, return to executing); acceptance bumps the
+  revision and writes the log Update entry together with the
+  `verified` event by the same writer, deletes the applied proposal
+  documents through the landed `FsPort.delete` (the session
+  deliberately keeps approved proposals pending until here), restores
+  the tool set; enforcement: entering plan-editing already swaps edit
+  and write out of the active tool set (landed with
+  renegotiation-session; no restore path and no plan-editing tools
+  exist until this ticket adds them), and this ticket inverts the
+  tool_call guard to block writes outside the plan directory (raw
+  writes into the plan directory remain blocked in every state);
+  crash recovery at session_start: leftover `reins-gate-open` /
+  `reins-gate-closed` entries (recorded by the session; a closed
+  entry carries the dispositions and an `abandoned` flag) resume in
+  executing, a durable review acceptance (log Update plus bumped
+  revision) is honored, pending proposals survive, and on-disk
+  content is authoritative (materialized-but-unaccepted content
+  surviving a crash is a documented residual; materialization refuses
+  duplicate ids so a re-run session stays safe).
+- Existing abstractions: the session's snapshot handle
+  (`RenegotiationOutcome.snapshot`, a landed `PlanSnapshot`;
+  `snapshotPlanDir` in `src/plan/fingerprint.ts`); `ToolsetPort`
+  (get/setActiveTools); the acceptance write utilities
+  (`prependLogEntry`, `appendVerifiedEvent`, `src/plan/write.ts`);
+  requireUi; `RenegotiationOutcome.approved` as the intent source.
 - Do NOT: persist the snapshot or diff (the fs-contract lists the
   temporary plan diff as ephemeral); leave edit and write reachable
   during plan-editing; auto-accept anything after a crash.
 - Seams: the blocking matrix (outside writes blocked, edit and write
   absent from the schema), materialization file effects, diff
   presentation inputs, accept effects, reject loop, abandon restore,
-  crash-recovery reconcile from leftover session entries.
+  crash-recovery reconcile from leftover `reins-gate-open` /
+  `reins-gate-closed` entries.
 - Interface contract: the acceptance write utilities (log entry plus
   status flip plus verified event) are reused for the Completion entry.
 
 ## 12. plan-completion (size: l)
 
-- Exports: the full `reins_complete` path: structural guard, then the
-  deferred walkthrough (for each deferred proposal: a blocking
-  fold-or-drop dialog; fold designates a durable target location and
-  the tool returns the fold instruction for the agent to write with
-  its normal tools outside the plan directory; drops are immediate),
-  outstanding folds verified structurally on the next attempt and the
-  dispositioned proposal documents deleted; then the completion
+- Exports: the full `reins_complete` path (the tool's IO carries the
+  required `setState` accessor: the completed flip happens inside the
+  tool execution): structural guard, then the deferred walkthrough
+  (for each deferred proposal, the store's `deferred()` set: a
+  blocking fold-or-drop dialog; fold designates a durable target
+  location and the tool returns the fold instruction for the agent to
+  write with its normal tools outside the plan directory; drops are
+  immediate), outstanding folds verified structurally on the next
+  attempt and the dispositioned proposal documents deleted through
+  the landed `FsPort.delete`; then the completion
   verifier: a fresh-context agent registered at session_start through
   pi-subagents' runtime agent registration event (`reins-completion-
   verifier`) and run through the in-process RPC spawn, receiving the
@@ -409,9 +439,12 @@ side effects; skipped when the pi binary is absent).
   the plan flips to completed; pi-subagents absence fails visibly at
   session_start (notification plus widget marker) and completion
   refuses with a named error.
-- Existing abstractions: VerifierRunner port (stubbed in the harness);
-  acceptance write utilities; requireUi; dialog mechanics from the
-  session.
+- Existing abstractions: VerifierRunner port (stubbed in the harness;
+  the wiring's real runner refuses visibly until this ticket replaces
+  it, `VerifierRequest`/`VerifierResult` shapes fixed); acceptance
+  write utilities (`prependLogEntry`, `appendVerifiedEvent`); the
+  session's blocking dialog mechanics and its `deferred: true`
+  markers; `FsPort.delete`; requireUi.
 - Do NOT: mark tasks done; complete while deferred items are
   unresolved; silently skip verification when the runtime is absent.
 - Seams: walkthrough dialogs scripted; verifier stubbed (fulfilled and
@@ -660,6 +693,76 @@ every delta additive, no planned API surface broke a dependent):
 - Tests: the harness steering recorder doubles as the forced-trigger
   mailbox (`takeForced` drains `h.steering.forced`), documented in
   `docs/testing.md`.
+
+## After renegotiation-session (level 5)
+
+The landed surface for later tickets to consume (deviation report: no
+dependent broke; every delta beyond the planned surface is additive):
+
+- The renegotiation machinery lives in `src/handlers/renegotiate.ts`
+  (beyond the layout's handlers/ list, continuing the attach/activate
+  precedent): `shouldOpenSession(state, scan, cause: SessionCause)`
+  (only an executing contract with a planDir enters the gate; deferred
+  proposals never satisfy a trigger condition) and
+  `openRenegotiationSession(deps, state, cause)` returning
+  `{ state, result: RenegotiationOutcome }`. `RenegotiationOutcome`
+  carries `kind` (completed, abandoned, or refused), `phase?`,
+  `terminateRun`, `approved: ApprovedIntent[]` (each `proposalId`,
+  `kind` add/modify/remove, optional `target`), `deferred` and
+  `rejected` id lists, `snapshot?: PlanSnapshot`, and `report`;
+  `presentationOf` and `DISPOSITION_OPTIONS` export the dialog
+  mechanics ticket 12's walkthrough reuses. `src/tools/renegotiate.ts`
+  builds `reins_renegotiate`; `/reins-renegotiate` is registered in
+  `src/pi.ts` and calls `ctx.abort()` when the gate opened.
+- Shared surface, all additive: `FsPort.delete(path)` (throws when
+  the file does not exist; every future FsPort implementor must carry
+  it); a required `setState` accessor on the tool IOs (`TaskToolIo`,
+  `ProposeToolIo`, and the new `RenegotiateToolIo`: `deps`,
+  `state()`, `setState`), because a gate opened inside a tool
+  execution must propagate the state the session ended in (every
+  later tool whose execution transitions the phase carries it); an
+  optional `terminate?: boolean` on the task, propose, and
+  renegotiate tool results (pi's `AgentToolResult` run-termination
+  hint). Harness: `h.aborts` records `ctx.abort()` (the
+  run-termination surface the command path uses at the gate) and the
+  synthetic ctx gained `isIdle`/`abort`, documented in
+  `docs/testing.md`.
+- `src/plan/fingerprint.ts` exists with `PlanSnapshot` (`root` plus a
+  read-only file map) and `snapshotPlanDir(fs, root)`: the snapshot
+  half of ticket 8's module, pre-implemented here because ticket 8 had
+  not landed (the blocked_by edges never encoded the spec's
+  existing-abstraction dependency). Ticket 8 adds `fingerprintContract`
+  beside it.
+- Entering plan-editing swaps raw edit and write out of the active
+  tool set inside the session (the active list is filtered); until
+  ticket 11 lands there is no restore path, so plan-editing is a
+  deliberate dead-end phase. The tool_call guard inversion (block
+  writes outside the plan directory) remains ticket 11's.
+- Pinned semantics, documented in code: the trigger evaluation sites
+  (current-work inside `reins_propose_change` after recording,
+  exhaustion inside `reins_task_complete` after the flip, task-start
+  entanglement inside `reins_task_start` before the flip, an entangled
+  start refused as "not started"); "nothing startable" is no pending,
+  no blocked, and no in_progress tasks plus at least one non-deferred
+  proposal; a dismissed or unrecognized dialog answer mid-sweep
+  abandons the session (nothing durable applies, the phase returns to
+  executing, the run still terminates); the deferred marker shape is
+  the strict boolean `deferred: true`; rejected proposals are deleted
+  at sweep completion under the runtime's `withFileMutationQueue` while
+  approved ones are deliberately kept pending (ticket 11 deletes
+  applied proposals at review acceptance, per the proposal store's
+  lifecycle); `reins_task_start` also performs its already in
+  progress / already done legality check before the mutation queue
+  (same error text).
+- Private session entries `reins-gate-open` / `reins-gate-closed`
+  (constants `GATE_OPEN_ENTRY` / `GATE_CLOSED_ENTRY`) record the open
+  gate state for ticket 11's crash recovery; a gate-closed entry
+  carries the session's dispositions and an `abandoned` flag.
+- Trigger 1 landed spec-first: only a non-deferred proposal bearing on
+  an in_progress task fires current-work (the ticket doc's "or on the
+  goal" wording is broader than the binding spec; unlinked additions
+  surface via exhaustion, initiative, or a later task-start once
+  linked).
 
 # Decisions taken in this spec (flagged for review)
 
