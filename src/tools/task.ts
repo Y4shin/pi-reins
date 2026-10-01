@@ -97,6 +97,43 @@ export async function taskStart(
   });
 }
 
+/** Complete a task: records the completion summary and marks it done. */
+export async function taskComplete(
+  deps: ReinsDeps,
+  state: ReinsState,
+  params: Record<string, unknown>,
+): Promise<TaskToolResult> {
+  const planDir = requireActiveContract(state, "reins_task_complete");
+  const summary = params.completionSummary;
+  if (typeof summary !== "string" || summary.trim() === "") {
+    throw new Error(
+      "reins_task_complete: a non-empty completionSummary is required " +
+        "(what was accomplished, against the task's acceptance criteria).",
+    );
+  }
+  const initial = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_complete");
+  return withFileMutationQueue(join(planDir, initial.file), async () => {
+    const task = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_complete");
+    const id = String(task.frontmatter.id);
+    const status = task.frontmatter.executionStatus;
+    if (status === "done") {
+      throw new Error(`reins_task_complete: task "${id}" is already done.`);
+    }
+    if (status !== "in_progress") {
+      throw new Error(
+        `reins_task_complete: task "${id}" is ${describeStatus(status)}; ` +
+          "start it before completing it (reins_task_start).",
+      );
+    }
+    writeFields(deps, task.file, { executionStatus: "done", completionSummary: summary });
+    return result(`Completed ${id}.`);
+  });
+}
+
+function describeStatus(status: unknown): string {
+  return typeof status === "string" ? status : "in an unknown status";
+}
+
 const TASK_ID_PARAM = Type.Object({
   taskId: Type.String({ description: "Semantic id of the task (its frontmatter id)" }),
 });
@@ -113,6 +150,21 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
       parameters: TASK_ID_PARAM,
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
         taskStart(io.deps(ctx), io.state(), params),
+    },
+    {
+      name: "reins_task_complete",
+      label: "Complete a task",
+      description:
+        "Complete a task of the active execution contract: records the completion summary and marks " +
+        "it done in the plan directory. A non-empty completionSummary is required.",
+      parameters: Type.Object({
+        taskId: TASK_ID_PARAM.properties.taskId,
+        completionSummary: Type.String({
+          description: "What was accomplished, against the task's acceptance criteria",
+        }),
+      }),
+      execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
+        taskComplete(io.deps(ctx), io.state(), params),
     },
   ];
 }

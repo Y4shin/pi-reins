@@ -77,3 +77,41 @@ describe("reins_task_start", () => {
     expect(unknown.message).toContain("no task with id \"no-such-task\"");
   });
 });
+
+describe("reins_task_complete", () => {
+  test("requires a non-empty completion summary", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    const before = h.readPlanFile("100-inspect-current-system.md");
+
+    for (const completionSummary of [undefined, "", "   "]) {
+      const outcome = await h.dispatchTool("reins_task_complete", {
+        taskId: "inspect-current-system",
+        completionSummary,
+      });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.message).toContain("completionSummary");
+    }
+
+    // The refusal changed nothing durable.
+    expect(h.readPlanFile("100-inspect-current-system.md")).toBe(before);
+  });
+
+  test("records the completion summary and marks the task done with a one-line result", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const outcome = await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Mapped the loading path; all call sites listed in the summary.",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("inspect-current-system");
+    expect(outcome.message.split("\n")).toHaveLength(1);
+
+    const task = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
+    expect(task.executionStatus).toBe("done");
+    expect(task.completionSummary).toBe("Mapped the loading path; all call sites listed in the summary.");
+  });
+});
