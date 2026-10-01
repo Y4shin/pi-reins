@@ -20,6 +20,8 @@ export interface FsPort {
   list(path?: string): string[];
   /** Write a file, creating parent directories as needed. */
   write(path: string, content: string): void;
+  /** Delete a file; throws when it does not exist. */
+  delete(path: string): void;
 }
 
 /** Dialog and surface port over pi's extension UI. */

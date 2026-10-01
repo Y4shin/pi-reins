@@ -15,11 +15,16 @@
  * reach a deferred-only set.
  */
 
+import { join } from "node:path";
+
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+
 import type { PlanScan } from "../plan/discover.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import type { ReinsDeps } from "../deps.js";
 import type { ProposalDocument } from "../plan/parse.js";
 import { proposalStore } from "../plan/proposals.js";
+import { writeFields } from "../plan/write.js";
 import { transition, type ReinsPhase, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
 import { renderWidget } from "../ui/widget.js";
@@ -214,16 +219,68 @@ export async function openRenegotiationSession(
   renderWidget(deps, gateState, scan);
 
   // The sweep: every pending proposal, deferred ones included, one
-  // blocking dialog each.
+  // blocking dialog each. Dispositions apply only when the sweep
+  // completes; a dismissed dialog abandons the session untouched.
+  const approvedFiles: string[] = [];
+  const deferredFiles: string[] = [];
+  const rejectedFiles: string[] = [];
+  let abandoned = false;
   for (const proposal of pending) {
-    await deps.ui.select(presentationOf(proposal), [...DISPOSITION_OPTIONS]);
+    const answer = await deps.ui.select(presentationOf(proposal), [...DISPOSITION_OPTIONS]);
+    const disposition = answer?.trim().toLowerCase();
+    if (disposition === "approve") approvedFiles.push(proposal.file);
+    else if (disposition === "defer") deferredFiles.push(proposal.file);
+    else if (disposition === "reject") rejectedFiles.push(proposal.file);
+    else {
+      // No answer (dismissed dialog) or an unrecognized one: the user
+      // walked away mid-session. Nothing durable happens.
+      abandoned = true;
+      break;
+    }
   }
 
-  // The sweep ends the renegotiating state; with no approvals recorded
-  // yet the contract returns to executing.
-  const finalState = transition(gateState, "executing");
+  const byFile = new Map(pending.map((proposal) => [proposal.file, proposal]));
+  if (abandoned) {
+    const finalState = transition(gateState, "executing");
+    renderWidget(deps, finalState, discoverPlanDir(deps.fs, planDir));
+    const report =
+      "Renegotiation session abandoned mid-sweep; no dispositions were applied and nothing was changed.";
+    deps.ui.notify(report, "info");
+    return {
+      state: finalState,
+      result: {
+        kind: "abandoned",
+        phase: finalState.phase,
+        terminateRun: true,
+        approved: [],
+        deferred: [],
+        rejected: [],
+        report,
+      },
+    };
+  }
+
+  // The sweep completed: the renegotiating state ends, so the
+  // dispositions apply now. Deferred proposals carry the marker;
+  // rejected proposals are deleted.
+  for (const file of deferredFiles) {
+    await withFileMutationQueue(join(planDir, file), async () => {
+      writeFields(deps, file, { deferred: true });
+    });
+  }
+  for (const file of rejectedFiles) {
+    await withFileMutationQueue(join(planDir, file), async () => {
+      if (deps.fs.exists(file)) deps.fs.delete(file);
+    });
+  }
+  const approved = approvedFiles.map((file) => intentOf(byFile.get(file) as ProposalDocument));
+
+  const finalState =
+    approved.length > 0 ? transition(gateState, "plan-editing") : transition(gateState, "executing");
   renderWidget(deps, finalState, discoverPlanDir(deps.fs, planDir));
-  const report = `Renegotiation session complete: now ${finalState.phase}.`;
+  const report =
+    `Renegotiation session complete: ${approved.length} approved, ${deferredFiles.length} deferred, ` +
+    `${rejectedFiles.length} rejected; now ${finalState.phase}.`;
   deps.ui.notify(report, "info");
   return {
     state: finalState,
@@ -231,10 +288,21 @@ export async function openRenegotiationSession(
       kind: "completed",
       phase: finalState.phase,
       terminateRun: true,
-      approved: [],
-      deferred: [],
-      rejected: [],
+      approved,
+      deferred: deferredFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
+      rejected: rejectedFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
       report,
     },
   };
+}
+
+/** The approved intent a proposal becomes when the user approves it. */
+function intentOf(proposal: ProposalDocument): ApprovedIntent {
+  const target = proposal.frontmatter.target;
+  const intent: ApprovedIntent = {
+    proposalId: idOf(proposal),
+    kind: kindOf(proposal),
+  };
+  if (typeof target === "string") intent.target = target;
+  return intent;
 }

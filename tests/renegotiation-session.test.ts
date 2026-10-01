@@ -301,6 +301,99 @@ describe("reins_renegotiate: the initiative gate", () => {
     expect(h.ui.dialogs).toEqual([]);
   });
 
+  test("answers record approve, defer, and reject as durable dispositions", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: {
+        select: (title) =>
+          title.includes("cp-add-cli-migration")
+            ? "Approve"
+            : title.includes("cp-modify-verify")
+              ? "Defer"
+              : "Reject",
+      },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+    h.writePlanFile(
+      "proposals/cp-remove-implement.md",
+      [
+        "---",
+        "type: Change Proposal",
+        "id: cp-remove-implement",
+        "kind: remove",
+        "target: implement-change",
+        "---",
+        "",
+        "# Change Proposal: Drop the implementation task",
+        "",
+        "## Rationale",
+        "",
+        "The provider loader already exists in the codebase baseline.",
+        "",
+      ].join("\n"),
+    );
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    // The deferred proposal carries the deferred marker.
+    const modified = h.readPlanFile("proposals/cp-modify-verify.md");
+    expect(modified).toContain("deferred: true");
+    // The rejected proposal is deleted when the renegotiating state ends.
+    expect(h.planFiles().some((f) => f === "proposals/cp-remove-implement.md")).toBe(false);
+    // The approved proposal stays pending until review acceptance.
+    expect(h.planFiles().some((f) => f === "proposals/cp-add-cli-migration.md")).toBe(true);
+    // An approval moves the contract toward plan editing.
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Gate: plan-editing");
+    expect(rendered).toContain("Proposals: 2 pending, 1 deferred");
+    const status = await h.dispatchTool("reins_status");
+    expect(status.isError).toBe(true);
+    expect(status.message).toContain("plan-editing");
+  });
+
+  test("a sweep with no approval returns to executing with deferrals recorded", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("deferred: true");
+    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toContain("deferred: true");
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Gate: executing");
+    expect(rendered).toContain("Proposals: 2 pending, 2 deferred");
+    // Execution continues: the task tools still answer.
+    const status = await h.dispatchTool("reins_status");
+    expect(status.isError).toBe(false);
+  });
+
+  test("a sweep that rejects everything clears the pending set and returns to executing", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Reject" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    expect(h.planFiles().some((f) => f.startsWith("proposals/"))).toBe(false);
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Gate: executing");
+    expect(rendered).not.toContain("Proposals:");
+  });
+
   test("the session terminates the run at the gate and the current task stays in_progress", async () => {
     const h = makeHarness({
       planDir: "plan-active",
