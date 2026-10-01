@@ -167,6 +167,9 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
     forceInject: (reason, note) => {
       steering.forced.push({ reason, note });
     },
+    // The recorder doubles as the forced-trigger mailbox: the steering
+    // engine drains pending triggers at the next eligible injection.
+    takeForced: () => steering.forced.splice(0),
   };
 
   const verifierPort: VerifierRunner =

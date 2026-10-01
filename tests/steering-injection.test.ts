@@ -70,6 +70,63 @@ describe("cadence", () => {
   });
 });
 
+describe("forced triggers", () => {
+  test("the first call of a new run is forced mid-cadence", async () => {
+    const h = await executingHarness();
+    await callLlm(h); // call 1: first of the implicit run
+    await callLlm(h); // call 2: skipped
+
+    await h.fire("before_agent_start", { type: "before_agent_start", prompt: "next prompt" });
+    const third = await callLlm(h); // call 3: forced by the run boundary
+    expect(third.injected).toBe(true);
+
+    // The forced injection does not shift the cadence rhythm.
+    const fourth = await callLlm(h); // call 4: cadence
+    expect(fourth.injected).toBe(true);
+    const fifth = await callLlm(h);
+    expect(fifth.injected).toBe(false);
+  });
+
+  test("a compaction forces the next injection and is one-shot", async () => {
+    const h = await executingHarness();
+    await callLlm(h);
+    await callLlm(h); // skipped
+
+    await h.fire("session_compact", { type: "session_compact", reason: "threshold" });
+    const afterCompact = await callLlm(h); // call 3: forced by compaction
+    expect(afterCompact.injected).toBe(true);
+
+    const fourth = await callLlm(h); // call 4: cadence
+    expect(fourth.injected).toBe(true);
+    const fifth = await callLlm(h); // the compaction trigger was consumed
+    expect(fifth.injected).toBe(false);
+  });
+
+  test("a forced trigger queued on the steering port overrides cadence", async () => {
+    const h = await executingHarness();
+    await callLlm(h);
+    await callLlm(h); // skipped
+
+    h.deps.steering.forceInject("gate-transition");
+    const forced = await callLlm(h); // call 3: forced override
+    expect(forced.injected).toBe(true);
+  });
+
+  test("a forced trigger's note is carried into the summary", async () => {
+    const h = await executingHarness();
+
+    h.deps.steering.forceInject(
+      "expected-declaration",
+      "wrote src/unrelated.ts; no path declared by the active task matches",
+    );
+    const forced = await callLlm(h);
+    expect(forced.injected).toBe(true);
+    expect(forced.message?.content).toContain(
+      "Note: wrote src/unrelated.ts; no path declared by the active task matches",
+    );
+  });
+});
+
 describe("without an active contract", () => {
   test("a detached session returns the outgoing message list untouched", async () => {
     const h = makeHarness({});

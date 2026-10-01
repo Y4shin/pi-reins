@@ -17,7 +17,7 @@
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
-import type { ReinsDeps, SteeringPort } from "../deps.js";
+import type { ForcedTrigger, ReinsDeps, SteeringPort } from "../deps.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import type { ReinsState } from "../state.js";
 import { composeSummary } from "./summary.js";
@@ -63,11 +63,18 @@ export function createSteeringEngine(): SteeringEngine {
   let callInRun = 0;
   /** One-shot: a compaction happened, force the next injection. */
   let postCompaction = false;
+  /** The engine's own forced-trigger queue (the prod deps.steering port). */
+  const forcedQueue: ForcedTrigger[] = [];
+
+  const port: SteeringPort = {
+    forceInject: (reason, note) => {
+      forcedQueue.push({ reason, note });
+    },
+    takeForced: () => forcedQueue.splice(0),
+  };
 
   return {
-    port: {
-      forceInject() {},
-    },
+    port,
     onRunStart: () => {
       callInRun = 0;
     },
@@ -82,18 +89,35 @@ export function createSteeringEngine(): SteeringEngine {
         return undefined;
       }
       const deps = io.deps();
+      // Forced triggers queue on whatever port the deps carry and force
+      // the injection that consumes them, regardless of cadence.
+      const forced = deps.steering.takeForced?.() ?? [];
       const cadence = deps.config.cadence;
       const cadenceDue = cadence > 0 && callCount % cadence === 0;
-      if (!cadenceDue && callInRun !== 1) return undefined;
+      const forcedNow =
+        forced.length > 0 ||
+        postCompaction ||
+        callInRun === 1 ||
+        state.completionAttempted === true;
+      if (!forcedNow && !cadenceDue) return undefined;
 
       const scan = discoverPlanDir(deps.fs, state.planDir);
+      let content = composeSummary(state, scan);
+      for (const trigger of forced) {
+        if (trigger.note !== undefined && trigger.note.trim() !== "") {
+          content += `\nNote: ${trigger.note}`;
+        }
+      }
       event.messages.push({
         role: "custom",
         customType: STEERING_MESSAGE_TYPE,
-        content: composeSummary(state, scan),
+        content,
         display: false,
         timestamp: Date.now(),
       });
+      // One-shot triggers are consumed by the injection that carried them.
+      postCompaction = false;
+      if (state.completionAttempted === true) state.completionAttempted = false;
       return { messages: event.messages };
     },
   };
