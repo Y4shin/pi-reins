@@ -22,6 +22,7 @@ import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { PlanScan } from "../plan/discover.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import type { ReinsDeps } from "../deps.js";
+import { snapshotPlanDir, type PlanSnapshot } from "../plan/fingerprint.js";
 import type { ProposalDocument } from "../plan/parse.js";
 import { proposalStore } from "../plan/proposals.js";
 import { writeFields } from "../plan/write.js";
@@ -89,6 +90,12 @@ export interface ApprovedIntent {
   target?: string;
 }
 
+/** The custom type of the private session entry recorded when a gate opens. */
+export const GATE_OPEN_ENTRY = "reins-gate-open";
+
+/** The custom type of the private session entry recorded when a gate closes. */
+export const GATE_CLOSED_ENTRY = "reins-gate-closed";
+
 /** How a session ended. */
 export type RenegotiationOutcomeKind = "completed" | "abandoned" | "refused";
 
@@ -105,6 +112,8 @@ export interface RenegotiationOutcome {
   deferred: string[];
   /** Rejected proposal ids (the documents are deleted). */
   rejected: string[];
+  /** The pre-session snapshot: what the review flow diffs against and abandon restores. */
+  snapshot?: PlanSnapshot;
   report: string;
 }
 
@@ -187,7 +196,7 @@ export function presentationOf(proposal: ProposalDocument): string {
 export async function openRenegotiationSession(
   deps: ReinsDeps,
   state: ReinsState,
-  _cause: SessionCause,
+  cause: SessionCause,
 ): Promise<{ state: ReinsState; result: RenegotiationOutcome }> {
   if (state.phase !== "executing" || state.planDir === undefined) {
     return refusal(deps, state, `reins: no active contract to renegotiate (phase: ${state.phase}).`);
@@ -214,9 +223,16 @@ export async function openRenegotiationSession(
     };
   }
 
-  // Enter the gate: the phase shows on the widget for the whole sweep.
+  // Enter the gate: the phase shows on the widget for the whole sweep;
+  // the open state is recorded so a crash-resumed session can reconcile
+  // the leftover gate; steering is forced at the transition.
   const gateState = transition(state, "renegotiating");
+  deps.session.appendEntry(GATE_OPEN_ENTRY, { planDir, phase: gateState.phase, cause: cause.kind });
+  deps.steering.forceInject("gate-transition", "Renegotiation gate opened; pending change proposals await disposition.");
   renderWidget(deps, gateState, scan);
+  // The pre-session snapshot: what the review flow diffs against and
+  // what abandon restores. Taken before any disposition touches disk.
+  const snapshot = snapshotPlanDir(deps.fs, planDir);
 
   // The sweep: every pending proposal, deferred ones included, one
   // blocking dialog each. Dispositions apply only when the sweep
@@ -242,6 +258,15 @@ export async function openRenegotiationSession(
   const byFile = new Map(pending.map((proposal) => [proposal.file, proposal]));
   if (abandoned) {
     const finalState = transition(gateState, "executing");
+    deps.session.appendEntry(GATE_CLOSED_ENTRY, {
+      planDir,
+      phase: finalState.phase,
+      approved: [],
+      deferred: [],
+      rejected: [],
+      abandoned: true,
+    });
+    deps.steering.forceInject("gate-transition", "Renegotiation gate closed; session abandoned, nothing changed.");
     renderWidget(deps, finalState, discoverPlanDir(deps.fs, planDir));
     const report =
       "Renegotiation session abandoned mid-sweep; no dispositions were applied and nothing was changed.";
@@ -277,6 +302,21 @@ export async function openRenegotiationSession(
 
   const finalState =
     approved.length > 0 ? transition(gateState, "plan-editing") : transition(gateState, "executing");
+  // Entering plan-editing swaps raw edit and write out of the active
+  // tool set (plan editing goes through the plugin tools).
+  if (finalState.phase === "plan-editing") {
+    const active = deps.toolset.getActiveTools();
+    deps.toolset.setActiveTools(active.filter((name) => name !== "edit" && name !== "write"));
+  }
+  deps.session.appendEntry(GATE_CLOSED_ENTRY, {
+    planDir,
+    phase: finalState.phase,
+    approved: approved.map((intent) => intent.proposalId),
+    deferred: deferredFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
+    rejected: rejectedFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
+    abandoned: false,
+  });
+  deps.steering.forceInject("gate-transition", `Renegotiation gate closed; now ${finalState.phase}.`);
   renderWidget(deps, finalState, discoverPlanDir(deps.fs, planDir));
   const report =
     `Renegotiation session complete: ${approved.length} approved, ${deferredFiles.length} deferred, ` +
@@ -291,6 +331,7 @@ export async function openRenegotiationSession(
       approved,
       deferred: deferredFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
       rejected: rejectedFiles.map((file) => idOf(byFile.get(file) as ProposalDocument)),
+      snapshot,
       report,
     },
   };

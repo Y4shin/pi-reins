@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { discoverPlanDir } from "../src/plan/discover.js";
-import { shouldOpenSession } from "../src/handlers/renegotiate.js";
+import { openRenegotiationSession, shouldOpenSession } from "../src/handlers/renegotiate.js";
 import type { ReinsState } from "../src/state.js";
 import { createHarness, type ReinsHarness, type ToolOutcome } from "./harness/index.js";
 
@@ -411,5 +411,146 @@ describe("reins_renegotiate: the initiative gate", () => {
     expect(h.readPlanFile("100-inspect-current-system.md")).toContain(
       "executionStatus: in_progress",
     );
+  });
+
+  test("entering plan-editing swaps edit and write out of the active tool set", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Approve" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.toolset.active = ["read", "edit", "write", "bash", "reins_status"];
+
+    await h.dispatchTool("reins_renegotiate");
+
+    // Raw plan-editing is out; everything else stays reachable.
+    expect(h.toolset.active).toEqual(["read", "bash", "reins_status"]);
+  });
+
+  test("a sweep without approvals does not touch the tool set", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.toolset.active = ["read", "edit", "write", "bash"];
+
+    await h.dispatchTool("reins_renegotiate");
+
+    expect(h.toolset.active).toEqual(["read", "edit", "write", "bash"]);
+  });
+});
+
+describe("openRenegotiationSession: the session result contract", () => {
+  test("the result carries approved intents by kind and target plus the pre-session snapshot", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Approve" },
+    });
+    const planBefore = h.readPlanFile("plan.md");
+
+    const { state, result } = await openRenegotiationSession(
+      h.deps,
+      { phase: "executing", planDir: h.planDir },
+      { kind: "initiative" },
+    );
+
+    expect(result.kind).toBe("completed");
+    expect(state.phase).toBe("plan-editing");
+    expect(result.terminateRun).toBe(true);
+    expect(result.approved).toStrictEqual([
+      { proposalId: "cp-add-cli-migration", kind: "add" },
+    ]);
+    expect(result.deferred).toStrictEqual([]);
+    expect(result.rejected).toStrictEqual([]);
+    // The snapshot handle: the plan directory as it stood before the sweep.
+    expect(result.snapshot?.root).toBe(h.planDir);
+    expect(result.snapshot?.files.get("plan.md")).toBe(planBefore);
+    expect(result.snapshot?.files.has("proposals/cp-add-cli-migration.md")).toBe(true);
+    expect(result.snapshot?.files.has("100-inspect-current-system.md")).toBe(true);
+  });
+
+  test("the snapshot predates the dispositions: rejected content survives in it", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: {
+        select: (title) => (title.includes("cp-add-cli-migration") ? "Approve" : "Reject"),
+      },
+    });
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+    const modifyBefore = h.readPlanFile("proposals/cp-modify-verify.md");
+
+    const { result } = await openRenegotiationSession(
+      h.deps,
+      { phase: "executing", planDir: h.planDir },
+      { kind: "initiative" },
+    );
+
+    // The rejected document is gone from disk...
+    expect(h.planFiles().some((f) => f === "proposals/cp-modify-verify.md")).toBe(false);
+    // ...but its pre-session content is preserved in the snapshot, and
+    // the approved intent names its kind and target.
+    expect(result.snapshot?.files.get("proposals/cp-modify-verify.md")).toBe(modifyBefore);
+    expect(result.approved).toStrictEqual([
+      { proposalId: "cp-add-cli-migration", kind: "add" },
+    ]);
+    expect(result.rejected).toStrictEqual(["cp-modify-verify"]);
+  });
+
+  test("an approved modify intent names its target task", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: {
+        select: (title) => (title.includes("cp-modify-verify") ? "Approve" : "Defer"),
+      },
+    });
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const { result } = await openRenegotiationSession(
+      h.deps,
+      { phase: "executing", planDir: h.planDir },
+      { kind: "initiative" },
+    );
+
+    expect(result.approved).toStrictEqual([
+      { proposalId: "cp-modify-verify", kind: "modify", target: "verify-result" },
+    ]);
+    expect(result.deferred).toStrictEqual(["cp-add-cli-migration"]);
+  });
+
+  test("the gate records open and closed session entries and forces steering", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.dispatchTool("reins_renegotiate");
+
+    const types = h.session.entries.map((entry) => entry.customType);
+    expect(types).toContain("reins-gate-open");
+    expect(types).toContain("reins-gate-closed");
+    const open = h.session.entries.find((entry) => entry.customType === "reins-gate-open");
+    expect(open?.data).toMatchObject({ planDir: h.planDir, phase: "renegotiating", cause: "initiative" });
+    const closed = h.session.entries.find((entry) => entry.customType === "reins-gate-closed");
+    expect(closed?.data).toMatchObject({
+      planDir: h.planDir,
+      phase: "executing",
+      approved: [],
+      deferred: ["cp-add-cli-migration"],
+      rejected: [],
+      abandoned: false,
+    });
+    // Gate transitions force a steering injection.
+    expect(h.steering.forced).toHaveLength(2);
+    for (const trigger of h.steering.forced) {
+      expect(trigger.reason).toBe("gate-transition");
+    }
   });
 });
