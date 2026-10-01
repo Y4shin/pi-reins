@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: User-controlled plan activation
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - attach-validation
 size: m
