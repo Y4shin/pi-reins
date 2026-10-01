@@ -5,6 +5,7 @@ import { afterAll, describe, expect, test } from "vitest";
 
 import { discoverPlanDir } from "../../src/plan/discover.js";
 import { createNodeFsPort } from "../../src/plan/fs.js";
+import { cleanupFixtures, copyFixture } from "../harness/fixtures.js";
 
 const tempDirs: string[] = [];
 
@@ -37,6 +38,7 @@ const PLAN_MD = [
 ].join("\n");
 
 afterAll(() => {
+  cleanupFixtures();
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -136,6 +138,44 @@ describe("discoverPlanDir", () => {
     expect(scan.tasks).toEqual([]);
     expect(scan.proposals).toEqual([]);
     expect(scan.findings).toEqual([]);
+  });
+
+  test("parses the conforming sample plan fixture end to end", () => {
+    const dir = copyFixture("plan-valid");
+
+    const scan = discoverPlanDir(createNodeFsPort(dir), dir);
+
+    expect(scan.findings).toEqual([]);
+    expect(scan.plan?.frontmatter.executionStatus).toBe("proposed");
+    expect(scan.plan?.frontmatter.goal).toBe(
+      "Migrate configuration loading to the new provider model",
+    );
+    expect(scan.tasks.map((t) => t.frontmatter.id)).toEqual([
+      "inspect-current-system",
+      "implement-change",
+      "verify-result",
+    ]);
+    for (const task of scan.tasks) {
+      expect(task.binding.description).toBeTruthy();
+      expect(task.binding.acceptanceCriteria).toBeTruthy();
+      expect(task.binding.constraints).toBeTruthy();
+    }
+    const implement = scan.tasks.find((t) => t.frontmatter.id === "implement-change");
+    expect(implement?.frontmatter.expectedPathRegexes).toEqual([
+      "^src/config/",
+      "^tests/config/",
+    ]);
+    const verify = scan.tasks.find((t) => t.frontmatter.id === "verify-result");
+    expect(verify?.frontmatter.expectedBashRegexes).toEqual([
+      "^npm (install|run|test)",
+      "^git (add|commit|status)",
+    ]);
+    expect(scan.index?.frontmatter.okf_version).toBe("0.2");
+    expect(scan.log?.body).toContain("**Creation**");
+    expect(scan.proposals).toHaveLength(1);
+    expect(scan.proposals[0]?.frontmatter.kind).toBe("add");
+    expect(scan.proposals[0]?.frontmatter.id).toBe("cp-add-cli-migration");
+    expect(scan.supporting).toEqual(["010-context.md"]);
   });
 
   test("reports a missing plan document as a finding instead of crashing", () => {
