@@ -214,6 +214,45 @@ function checkIdUniqueness(scan: PlanScan): Violation[] {
   return violations;
 }
 
+/** The closed leading bold-word vocabulary of log entries. */
+const LOG_ENTRY_WORDS = ["Creation", "Activation", "Update", "Completion", "Deprecation"];
+const LOG_DATE_HEADING = /^##\s+\d{4}-\d{2}-\d{2}\s*$/;
+
+/**
+ * Log structure (upstream §9 as profiled by the fs-contract): H2
+ * headings are ISO 8601 dates grouping the entries, and every top
+ * level entry begins with a bold word from the closed vocabulary.
+ */
+function checkLogStructure(scan: PlanScan): Violation[] {
+  const log = scan.log;
+  if (!log) return [];
+  const violations: Violation[] = [];
+  for (const line of log.body.split("\n")) {
+    if (/^##\s+/.test(line) && !LOG_DATE_HEADING.test(line)) {
+      const heading = line.replace(/^##\s+/, "").trim();
+      violations.push({
+        file: log.file,
+        rule: "log-heading-format",
+        message: `log headings must be ISO 8601 dates (YYYY-MM-DD), got: "${heading}"`,
+      });
+    }
+    const entry = line.match(/^[*-]\s+(.*)$/);
+    if (entry) {
+      const word = entry[1].match(/^\*\*([A-Za-z]+)\*\*/);
+      if (!word || !LOG_ENTRY_WORDS.includes(word[1])) {
+        violations.push({
+          file: log.file,
+          rule: "log-entry-vocabulary",
+          message:
+            `log entries must begin with one of ${LOG_ENTRY_WORDS.map((w) => `**${w}**`).join(", ")} ` +
+            `(got: ${entry[1].slice(0, 40)})`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkParseFindings,
   checkIndexStructure,
@@ -221,6 +260,7 @@ const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkBindingSections,
   checkStatusVocabularies,
   checkIdUniqueness,
+  checkLogStructure,
 ];
 
 /** Validate a scan against the full execution-plan contract. */

@@ -60,6 +60,24 @@ describe("validatePlan rule classes", () => {
     );
   });
 
+  test("log class: date headings and the closed entry vocabulary hold", () => {
+    const violations = validateFixture("malformed-log-structure");
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        file: "log.md",
+        rule: "log-heading-format",
+        message: expect.stringContaining("Introduction"),
+      }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        file: "log.md",
+        rule: "log-entry-vocabulary",
+        message: expect.stringContaining("Tweak"),
+      }),
+    );
+  });
+
   test("reserved-filename class: reserved files never serve as task, phase, or plan documents", () => {
     const dir = copyFixture("malformed-reserved-filename");
     const scan = discoverPlanDir(createNodeFsPort(dir), dir);
