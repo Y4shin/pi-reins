@@ -52,10 +52,19 @@ export interface ToolsetPort {
 
 /**
  * Steering override entry point. The default is a no-op; the steering
- * engine (steering-injection ticket) replaces it.
+ * engine (steering-injection ticket) replaces it: forced triggers queue
+ * on the port and are consumed by the next eligible injection.
  */
 export interface SteeringPort {
   forceInject(reason: string, note?: string): void;
+  /** Drain pending forced triggers, oldest first (the context leg consumes them). */
+  takeForced?(): ForcedTrigger[];
+}
+
+/** One queued forced injection: why it fired and any targeted note. */
+export interface ForcedTrigger {
+  reason: string;
+  note?: string;
 }
 
 export function noopSteering(): SteeringPort {

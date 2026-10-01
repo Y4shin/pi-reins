@@ -60,7 +60,10 @@ or exact strings beyond the steering summary's required content lines.
 - **Recorder ports**: session entries, messenger calls, toolset
   changes, steering force-injects, and verifier requests are all
   captured on the harness (`h.session`, `h.messenger`, `h.toolset`,
-  `h.steering`, `h.verifier`) for direct assertion.
+  `h.steering`, `h.verifier`) for direct assertion. The steering
+  recorder doubles as the forced-trigger mailbox: `forceInject` queues
+  a trigger that the context leg drains at the next eligible injection,
+  so `h.steering.forced` holds only pending triggers.
 - **Fixtures**: `tests/fixtures/plan-valid/` is the conforming sample
   plan (plan document, index, log, three tasks with binding sections,
   two carrying expected declaration regexes, one change proposal, one

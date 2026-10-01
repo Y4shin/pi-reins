@@ -17,22 +17,23 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 import { attach } from "./handlers/attach.js";
 import { activate } from "./handlers/activate.js";
-import { defaultConfig } from "./config.js";
+import { createContextHandler } from "./handlers/context.js";
+import { CADENCE_FLAG, CADENCE_FLAG_DEFAULT, resolveConfig } from "./config.js";
 import type {
   ReinsDeps,
   ReinsUi,
   VerifierRunner,
 } from "./deps.js";
-import { noopSteering } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
+import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 import { createTaskTools } from "./tools/task.js";
 import { createProposeTool } from "./tools/propose.js";
 
 /** The custom message type used for the context-tail steering summary. */
-export const STEERING_MESSAGE_TYPE = "reins-steering";
+export { STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 
 export interface ReinsDepsOptions {
   /** Filesystem root override; the attach command roots the port at the plan directory. */
@@ -45,8 +46,17 @@ export interface ReinsWiring {
 }
 
 export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void {
-  const createDeps = wiring.createDeps ?? ((ctx, options) => createRealDeps(ctx, pi, options));
+  const steeringEngine = createSteeringEngine();
+  const createDeps = wiring.createDeps ?? ((ctx, options) =>
+    createRealDeps(ctx, pi, options, steeringEngine.port));
   let state: ReinsState = freshState();
+
+  // The steering cadence is user-tunable per session (default 4).
+  pi.registerFlag(CADENCE_FLAG, {
+    description: "Inject the steering summary every Nth LLM call",
+    type: "string",
+    default: CADENCE_FLAG_DEFAULT,
+  });
 
   pi.on("session_start", async (event, ctx) => {
     state = onSessionStart(createDeps(ctx), event as SessionStartEvent);
@@ -94,6 +104,20 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   // every bound contract; the reins_* tools are the legal alternative
   // the block reason names.
   pi.on("tool_call", (event, ctx) => guardPlanDirWrites(event, ctx, { planDir: state.planDir }));
+
+  // Steering: the context-tail summary is the plugin's single injection
+  // point. The run boundary resets the per-run call counter, compaction
+  // forces the next injection, and the engine consumes forced triggers
+  // queued on the deps' steering port.
+  pi.on("before_agent_start", () => steeringEngine.onRunStart());
+  pi.on("session_compact", () => steeringEngine.onCompacted());
+  pi.on(
+    "context",
+    createContextHandler(steeringEngine, {
+      state: () => state,
+      deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+    }),
+  );
 }
 
 /** Resolve the /reins-attach argument against the session cwd. */
@@ -107,7 +131,12 @@ export default function createReinsExtension(pi: ExtensionAPI): void {
   registerReins(pi);
 }
 
-function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: ReinsDepsOptions): ReinsDeps {
+function createRealDeps(
+  ctx: ExtensionContext,
+  pi: ExtensionAPI,
+  options: ReinsDepsOptions | undefined,
+  steering: ReinsDeps["steering"],
+): ReinsDeps {
   return {
     fs: createNodeFsPort(options?.fsRoot ?? ctx.cwd),
     ui: adaptUi(ctx),
@@ -116,7 +145,7 @@ function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: Reins
     // repository when one exists (the fs-contract's rule); commands
     // root the port at the plan directory, so prefer that root here.
     actor: resolveActor(options?.fsRoot ?? ctx.cwd),
-    config: defaultConfig(),
+    config: resolveConfig((name) => pi.getFlag(name)),
     session: {
       appendEntry: (customType, data) => {
         pi.appendEntry(customType, data);
@@ -139,7 +168,7 @@ function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: Reins
         pi.setActiveTools(names);
       },
     },
-    steering: noopSteering(),
+    steering,
     verifier: createUnavailableVerifier(),
   };
 }
