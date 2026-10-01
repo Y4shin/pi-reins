@@ -127,6 +127,66 @@ describe("forced triggers", () => {
   });
 });
 
+describe("summary content", () => {
+  test("reflects durable state with the invariant header and progress instruction", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Mapped the loading path; every consumer listed.",
+    });
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+    await h.dispatchTool("reins_progress", {
+      note: "Replaced the static loader with the provider model.",
+    });
+    await h.dispatchTool("reins_task_block", {
+      taskId: "verify-result",
+      reason: "Awaiting the migrated build",
+    });
+
+    const call = await callLlm(h); // first call of the run
+    expect(call.injected).toBe(true);
+    const content = call.message?.content ?? "";
+
+    // The invariant header.
+    expect(content).toContain("Stay within the agreed execution contract");
+    expect(content).toContain("material plan changes require the user");
+    // Durable state, read fresh from the plan directory.
+    expect(content).toContain("Goal: Migrate configuration loading to the new provider model");
+    expect(content).toContain("1/3 done");
+    expect(content).toContain("active: implement-change");
+    expect(content).toContain("blocked: verify-result");
+    expect(content).toContain("Gate: executing");
+    expect(content).toContain("Now: Replaced the static loader with the provider model.");
+    // The progress-recording instruction.
+    expect(content).toContain("reins_progress");
+
+    // The summary never persists into the session.
+    expect(h.session.entries.map((e) => e.customType)).not.toContain("reins-steering");
+  });
+
+  test("each injection reads the plan directory fresh", async () => {
+    const h = await executingHarness();
+    const first = await callLlm(h);
+    expect(first.message?.content).toContain("0/3 done");
+
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Mapped the loading path.",
+    });
+
+    const second = await callLlm(h); // call 2: skipped
+    expect(second.injected).toBe(false);
+    const third = await callLlm(h); // call 3: skipped
+    expect(third.injected).toBe(false);
+    const fourth = await callLlm(h); // call 4: cadence
+    expect(fourth.injected).toBe(true);
+    expect(fourth.message?.content).toContain("1/3 done");
+    expect(fourth.message?.content).toContain("active: none");
+  });
+});
+
 describe("without an active contract", () => {
   test("a detached session returns the outgoing message list untouched", async () => {
     const h = makeHarness({});
