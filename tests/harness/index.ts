@@ -106,6 +106,8 @@ export interface ReinsHarness {
   toolset: { active: string[]; history: string[][] };
   steering: { forced: Array<{ reason: string; note?: string }> };
   verifier: { requests: VerifierRequest[] };
+  /** One capture per ctx.abort() call a command handler made. */
+  aborts: number[];
   api: HarnessExtensionApi;
   /** Register a test tool through the same boundary pi registration uses. */
   registerTool(definition: HarnessToolDefinition): void;
@@ -139,6 +141,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
   const toolset = { active: [] as string[], history: [] as string[][] };
   const steering = { forced: [] as Array<{ reason: string; note?: string }> };
   const verifier = { requests: [] as VerifierRequest[] };
+  const aborts: number[] = [];
 
   const sessionPort: SessionPort = {
     appendEntry: (customType, data) => {
@@ -196,7 +199,17 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
     verifier: verifierPort,
   };
 
-  const harnessCtx = { cwd: root, hasUI: true, mode: "tui" };
+  const harnessCtx = {
+    cwd: root,
+    hasUI: true,
+    mode: "tui",
+    // The run-control surface command handlers use to terminate a live
+    // run (the renegotiation gate); captured for assertion.
+    isIdle: () => false,
+    abort: () => {
+      aborts.push(aborts.length + 1);
+    },
+  };
 
   const handlers = new Map<string, Handler[]>();
   const tools = new Map<string, HarnessToolDefinition>();
@@ -287,6 +300,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
     toolset,
     steering,
     verifier,
+    aborts,
     api,
     registerTool: (definition) => api.registerTool(definition),
     on: (type, handler) => api.on(type, handler),

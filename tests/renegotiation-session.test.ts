@@ -438,6 +438,23 @@ describe("reins_renegotiate: the initiative gate", () => {
     );
   });
 
+  test("the widget shows the renegotiating gate during the session and the final phase after", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.dispatchTool("reins_renegotiate");
+
+    const rendered = h.ui.widgets.map((w) => (w.lines ?? []).join("\n"));
+    expect(rendered.some((text) => text.includes("Gate: renegotiating"))).toBe(true);
+    expect(rendered[rendered.length - 1]).toContain("Gate: executing");
+    // The proposal counts ride the same surface.
+    expect(rendered[rendered.length - 1]).toContain("Proposals: 1 pending, 1 deferred");
+  });
+
   test("entering plan-editing swaps edit and write out of the active tool set", async () => {
     const h = makeHarness({
       planDir: "plan-active",
@@ -465,6 +482,53 @@ describe("reins_renegotiate: the initiative gate", () => {
     await h.dispatchTool("reins_renegotiate");
 
     expect(h.toolset.active).toEqual(["read", "edit", "write", "bash"]);
+  });
+});
+
+describe("/reins-renegotiate: the user's deliberate gate", () => {
+  test("the command opens the session and terminates the current run at the gate", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.runCommand("reins-renegotiate");
+
+    // The sweep ran over the whole pending set...
+    expect(h.ui.dialogs).toHaveLength(1);
+    // ...the deferred marker is durable...
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("deferred: true");
+    // ...the user got the report...
+    const lastNotify = h.ui.notifies[h.ui.notifies.length - 1];
+    expect(lastNotify.type).toBe("info");
+    expect(lastNotify.message).toMatch(/renegotiation session complete/i);
+    // ...and the current run was terminated at the gate.
+    expect(h.aborts).toHaveLength(1);
+  });
+
+  test("the command with nothing attached refuses without dialogs", async () => {
+    const h = makeHarness({ now: FIXED_NOW });
+
+    await h.runCommand("reins-renegotiate");
+
+    expect(h.ui.notifies[h.ui.notifies.length - 1].type).toBe("error");
+    expect(h.ui.notifies[h.ui.notifies.length - 1].message).toContain("no active contract");
+    expect(h.ui.dialogs).toEqual([]);
+    expect(h.aborts).toHaveLength(0);
+  });
+
+  test("the command without an interactive UI blocks fail-closed", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW, hasUI: false });
+    await h.runCommand("reins-attach", "plan");
+    const filesBefore = h.planFiles();
+
+    await h.runCommand("reins-renegotiate");
+
+    expect(h.ui.dialogs).toEqual([]);
+    expect(h.planFiles()).toEqual(filesBefore);
+    expect(h.aborts).toHaveLength(0);
   });
 });
 

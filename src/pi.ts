@@ -26,6 +26,7 @@ import type {
 } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { guardPlanDirWrites } from "./handlers/tool-call.js";
+import { openRenegotiationSession } from "./handlers/renegotiate.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
@@ -81,6 +82,19 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
       const outcome = await activate(commandDeps, state);
       state = outcome.state;
+    },
+  });
+
+  // The user's deliberate opening of the renegotiation gate. Opening
+  // it terminates the current run at the gate.
+  pi.registerCommand("reins-renegotiate", {
+    description:
+      "Open the renegotiation gate: present every pending change proposal for approve, defer, or reject",
+    handler: async (_args, ctx) => {
+      const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
+      const outcome = await openRenegotiationSession(commandDeps, state, { kind: "initiative" });
+      state = outcome.state;
+      if (outcome.result.terminateRun) ctx.abort();
     },
   });
 
