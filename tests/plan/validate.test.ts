@@ -60,6 +60,19 @@ describe("validatePlan rule classes", () => {
     );
   });
 
+  test("id class: task ids are required and unique within the plan", () => {
+    const violations = validateFixture("malformed-duplicate-ids");
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        rule: "duplicate-task-id",
+        message: expect.stringContaining("shared-task"),
+      }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "300-third.md", rule: "missing-task-id" }),
+    );
+  });
+
   test("vocabulary class: executionStatus values stay within their document vocabularies", () => {
     const violations = validateFixture("malformed-status-vocabulary");
     const statusViolations = violations.filter((v) => v.rule === "execution-status-vocabulary");

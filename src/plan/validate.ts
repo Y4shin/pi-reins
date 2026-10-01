@@ -183,12 +183,44 @@ function describeValue(value: unknown): string {
   return value === undefined ? "missing" : `got: ${JSON.stringify(value)}`;
 }
 
+/**
+ * Id rules: task ids are required and unique within the plan (stable
+ * semantic identity is the frontmatter id, never the file path).
+ */
+function checkIdUniqueness(scan: PlanScan): Violation[] {
+  const violations: Violation[] = [];
+  const filesById = new Map<string, string[]>();
+  for (const task of scan.tasks) {
+    const id = task.frontmatter.id;
+    if (typeof id !== "string" || id.trim() === "") {
+      violations.push({
+        file: task.file,
+        rule: "missing-task-id",
+        message: "task documents must declare a non-empty id",
+      });
+      continue;
+    }
+    filesById.set(id, [...(filesById.get(id) ?? []), task.file]);
+  }
+  for (const [id, files] of filesById) {
+    if (files.length > 1) {
+      violations.push({
+        file: files[0],
+        rule: "duplicate-task-id",
+        message: `task id "${id}" is declared by ${files.length} tasks: ${files.join(", ")}`,
+      });
+    }
+  }
+  return violations;
+}
+
 const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkParseFindings,
   checkIndexStructure,
   checkProfile,
   checkBindingSections,
   checkStatusVocabularies,
+  checkIdUniqueness,
 ];
 
 /** Validate a scan against the full execution-plan contract. */
