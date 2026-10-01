@@ -12,6 +12,7 @@
 
 import type { ReinsDeps } from "../deps.js";
 import type { PlanScan } from "../plan/discover.js";
+import { proposalStore } from "../plan/proposals.js";
 import type { TaskDocument } from "../plan/parse.js";
 import type { ReinsState } from "../state.js";
 
@@ -89,5 +90,14 @@ function widgetLines(state: ReinsState, scan: PlanScan): string[] {
     lines.push(`Blocked: ${blocked.map(describeBlocked).join(", ")}`);
   }
   lines.push(`Gate: ${state.phase}`);
+  // Pending and deferred proposal counts, per the architecture spec's
+  // widget surface. Deferred proposals stay in the pending set and are
+  // counted apart.
+  const proposals = proposalStore(scan);
+  const pending = proposals.pending().length;
+  if (pending > 0) {
+    const deferred = proposals.deferred().length;
+    lines.push(`Proposals: ${pending} pending` + (deferred > 0 ? `, ${deferred} deferred` : ""));
+  }
   return lines;
 }

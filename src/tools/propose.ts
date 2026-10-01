@@ -22,6 +22,7 @@ import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { dumpDocument, type FrontmatterData } from "../plan/parse.js";
 import { generatedBy } from "../plan/write.js";
 import type { ReinsState } from "../state.js";
+import { renderWidget } from "../ui/widget.js";
 
 /** The deps-and-state accessors every plugin tool executes through. */
 export interface ProposeToolIo {
@@ -264,6 +265,9 @@ export async function proposeChange(
   await withFileMutationQueue(join(planDir, file), async () => {
     deps.fs.write(file, dumpDocument(frontmatter, body));
   });
+  // Plugin tool results update the widget; the pending-proposal count
+  // is derived from a fresh scan, never persisted.
+  renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
   return result(`Recorded proposal ${proposalId} (${proposalKind}): ${title}.`);
 }
 

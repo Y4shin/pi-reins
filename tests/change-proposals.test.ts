@@ -7,6 +7,9 @@
  * before approval; recording never applies anything.
  */
 
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, test } from "vitest";
 import YAML from "yaml";
 
@@ -250,6 +253,64 @@ describe("reins_propose_change: modify and remove require a resolvable target", 
 
     // The refusals wrote nothing durable.
     expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+});
+
+describe("the widget counts pending proposals; proposals stay execution-ineligible", () => {
+  test("the widget shows pending and deferred proposal counts", async () => {
+    const h = await executingHarness();
+    const lines = () => (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+
+    // The plan-active fixture carries one proposal; recording a second
+    // re-renders the widget with the pending count.
+    await h.dispatchTool("reins_propose_change", ADD_PARAMS);
+    expect(lines()).toContain("Proposals: 2 pending");
+
+    // A deferred proposal stays in the pending set and is counted apart.
+    h.writePlanFile(
+      "proposals/cp-add-cli-migration.md",
+      h
+        .readPlanFile("proposals/cp-add-cli-migration.md")
+        .replace("kind: add", "kind: add\ndeferred: true"),
+    );
+    await h.dispatchTool("reins_propose_change", {
+      kind: "modify",
+      id: "cp-widen-inspection",
+      target: "inspect-current-system",
+      rationale: "The inspection must also cover the CLI entry point.",
+    });
+    expect(lines()).toContain("Proposals: 3 pending, 1 deferred");
+  });
+
+  test("the proposal line is omitted while no proposals are pending", async () => {
+    const h = await executingHarness();
+    rmSync(join(h.planDir, "proposals"), { recursive: true, force: true });
+
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const lines = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(lines).not.toContain("Proposals:");
+    expect(lines).toContain("Tasks: 0/3 done");
+  });
+
+  test("proposals never become execution-eligible", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_propose_change", ADD_PARAMS);
+
+    // The draft task of an addition is not a task of the contract.
+    const draft = await h.dispatchTool("reins_task_start", { taskId: "migrate-cli-flags" });
+    expect(draft.isError).toBe(true);
+    expect(draft.message).toContain("no task with id");
+
+    // Neither is the proposal itself, and the counts never move.
+    const itself = await h.dispatchTool("reins_task_start", { taskId: "cp-add-cli-flags" });
+    expect(itself.isError).toBe(true);
+    expect(itself.message).toContain("no task with id");
+
+    const status = await h.dispatchTool("reins_status");
+    expect(status.message).toContain("0/3");
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Tasks: 0/3 done");
   });
 });
 
