@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Task lifecycle tools with write-path enforcement
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - activation
 size: l
