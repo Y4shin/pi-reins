@@ -26,6 +26,30 @@ afterEach(() => {
 });
 
 describe("reins-attach", () => {
+  test("the rejection report names every violation with its rule, not only the first", async () => {
+    const h = makeHarness({ planDir: "malformed-multi" });
+
+    await h.runCommand("reins-attach", "plan");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    const report = h.ui.notifies[0].message;
+    // Defects across four rule classes and four files, all in one report.
+    for (const rule of [
+      "duplicate-task-id",
+      "execution-status-vocabulary",
+      "missing-binding-section",
+      "log-entry-vocabulary",
+    ]) {
+      expect(report).toContain(rule);
+    }
+    for (const file of ["100-first.md", "200-second.md", "300-third.md", "log.md"]) {
+      expect(report).toContain(file);
+    }
+    // Nothing bound: no session entry, state stays detached.
+    expect(h.session.entries).toEqual([]);
+  });
+
   test("attaching a plan whose executionStatus is already active enters executing", async () => {
     const h = makeHarness({ planDir: "plan-active" });
 

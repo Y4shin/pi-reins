@@ -60,6 +60,18 @@ describe("validatePlan rule classes", () => {
     );
   });
 
+  test("report completeness: violations from every rule class are named, not only the first", () => {
+    const violations = validateFixture("malformed-multi");
+    const rules = new Set(violations.map((v) => v.rule));
+    // Defects span four rule classes across four files; every one of
+    // them must appear in the same report.
+    expect(rules).toContain("duplicate-task-id");
+    expect(rules).toContain("execution-status-vocabulary");
+    expect(rules).toContain("missing-binding-section");
+    expect(rules).toContain("log-entry-vocabulary");
+    expect(violations.length).toBeGreaterThanOrEqual(4);
+  });
+
   test("log class: date headings and the closed entry vocabulary hold", () => {
     const violations = validateFixture("malformed-log-structure");
     expect(violations).toContainEqual(
