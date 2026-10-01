@@ -55,7 +55,71 @@ function checkIndexStructure(scan: PlanScan): Violation[] {
   ];
 }
 
-const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [checkParseFindings, checkIndexStructure];
+/**
+ * OKF 0.2 profile rules: the root index.md and log.md are mandatory,
+ * okf_version is pinned to "0.2", and the plan document carries the
+ * format's required frontmatter (type, id, schemaVersion, goal).
+ * Unrecognized frontmatter keys stay permitted everywhere else.
+ */
+function checkProfile(scan: PlanScan): Violation[] {
+  const violations: Violation[] = [];
+  if (!scan.index) {
+    violations.push({
+      file: "index.md",
+      rule: "missing-reserved-file",
+      message: "the plan root must contain an index.md bundle index",
+    });
+  } else {
+    const okfVersion = scan.index.frontmatter.okf_version;
+    if (okfVersion !== "0.2") {
+      violations.push({
+        file: scan.index.file,
+        rule: "okf-version",
+        message: `index.md must declare okf_version: "0.2" (got: ${JSON.stringify(okfVersion) ?? "nothing"})`,
+      });
+    }
+  }
+  if (!scan.log) {
+    violations.push({
+      file: "log.md",
+      rule: "missing-reserved-file",
+      message: "the plan root must contain a log.md change log",
+    });
+  }
+  violations.push(...checkPlanMetadata(scan));
+  return violations;
+}
+
+const REQUIRED_PLAN_FIELDS = ["id", "schemaVersion", "goal"] as const;
+
+function checkPlanMetadata(scan: PlanScan): Violation[] {
+  const plan = scan.plan;
+  if (!plan) return [];
+  const violations: Violation[] = [];
+  if (plan.frontmatter.type !== "Execution Plan") {
+    violations.push({
+      file: plan.file,
+      rule: "plan-type",
+      message: `plan.md must declare type: Execution Plan (got: ${JSON.stringify(plan.frontmatter.type) ?? "nothing"})`,
+    });
+  }
+  for (const field of REQUIRED_PLAN_FIELDS) {
+    if (plan.frontmatter[field] === undefined) {
+      violations.push({
+        file: plan.file,
+        rule: "missing-required-field",
+        message: `plan.md frontmatter must declare ${field}`,
+      });
+    }
+  }
+  return violations;
+}
+
+const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
+  checkParseFindings,
+  checkIndexStructure,
+  checkProfile,
+];
 
 /** Validate a scan against the full execution-plan contract. */
 export function validatePlan(scan: PlanScan): Violation[] {

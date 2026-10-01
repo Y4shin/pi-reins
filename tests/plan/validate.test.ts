@@ -38,4 +38,25 @@ describe("validatePlan rule classes", () => {
       expect.objectContaining({ file: "index.md", rule: "index-frontmatter-keys" }),
     );
   });
+
+  test("profile class: okf_version is pinned and the root log is mandatory", () => {
+    const violations = validateFixture("malformed-okf-version");
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "index.md", rule: "okf-version" }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "log.md", rule: "missing-reserved-file" }),
+    );
+  });
+
+  test("profile class: plan.md declares the plan type and its required metadata", () => {
+    const violations = validateFixture("malformed-plan-metadata");
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "plan.md", rule: "plan-type" }),
+    );
+    const missing = violations.filter((v) => v.rule === "missing-required-field");
+    expect(missing.map((v) => v.message)).toEqual(
+      expect.arrayContaining([expect.stringContaining("schemaVersion"), expect.stringContaining("goal")]),
+    );
+  });
 });
