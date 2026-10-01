@@ -532,6 +532,72 @@ describe("/reins-renegotiate: the user's deliberate gate", () => {
   });
 });
 
+describe("reins_task_start: imminent-work entanglement", () => {
+  test("starting a task entangled with a pending proposal opens the gate instead of starting", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const outcome = await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    expect(outcome.isError).toBe(false);
+    // The start was gated: the task was not started.
+    expect(outcome.message).toContain("not started");
+    expect(h.readPlanFile("300-verify-result.md")).toContain("executionStatus: pending");
+    // The session ran: the deferred disposition is durable and the run terminates.
+    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toContain("deferred: true");
+    expect(terminateOf(outcome)).toBe(true);
+  });
+
+  test("starting an unentangled task proceeds without a gate", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const outcome = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("Started inspect-current-system");
+    expect(h.ui.dialogs).toEqual([]);
+  });
+
+  test("after the proposal is deferred the same start succeeds on retry", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+
+    const gated = await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+    expect(gated.message).toContain("not started");
+
+    const retried = await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+    expect(retried.isError).toBe(false);
+    expect(retried.message).toContain("Started verify-result");
+  });
+
+  test("a deferred proposal does not gate the start of its target task", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile(
+      "proposals/cp-modify-verify.md",
+      MODIFY_VERIFY_PROPOSAL.replace("kind: modify", "kind: modify\ndeferred: true"),
+    );
+
+    const outcome = await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("Started verify-result");
+    expect(h.ui.dialogs).toEqual([]);
+  });
+});
+
 describe("openRenegotiationSession: the session result contract", () => {
   test("the result carries approved intents by kind and target plus the pre-session snapshot", async () => {
     const h = makeHarness({
