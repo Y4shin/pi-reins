@@ -386,4 +386,47 @@ describe("tool_call guard: raw writes into the plan directory", () => {
     });
     expect(results).toEqual([]);
   });
+
+  test("blocks shell writes into the plan directory", async () => {
+    const h = await executingHarness();
+
+    const shellWrites = [
+      "echo x > plan/notes.md",
+      "echo x >> plan/notes.md",
+      "echo x >plan/notes.md",
+      "cat notes.txt | tee plan/notes.md",
+      "touch plan/notes.md",
+      "mkdir -p plan/sub",
+      "rm plan/notes.md",
+      "mv plan/notes.md plan/renamed.md",
+      "sed -i s/a/b/ plan/100-inspect-current-system.md",
+      "dd if=/dev/zero of=plan/notes.md bs=1 count=1",
+    ];
+    for (const command of shellWrites) {
+      const results = await h.fire("tool_call", { toolName: "bash", input: { command } });
+      const decision = results[0] as { block?: boolean; reason?: string } | undefined;
+      expect(decision?.block, command).toBe(true);
+      expect(decision?.reason, command).toContain("reins_");
+    }
+  });
+
+  test("passes shell commands that do not write into the plan directory", async () => {
+    const h = await executingHarness();
+
+    const passes = [
+      "npm test",
+      "git status",
+      "cat plan/plan.md",
+      "grep -r goal plan/",
+      "ls plan",
+      "echo x > /tmp/elsewhere.md",
+      "cp plan/plan.md /tmp/copy.md",
+      "sed -n 1,5p plan/plan.md",
+      "head -3 plan/log.md > /tmp/head.md",
+    ];
+    for (const command of passes) {
+      const results = await h.fire("tool_call", { toolName: "bash", input: { command } });
+      expect(results, command).toEqual([]);
+    }
+  });
 });
