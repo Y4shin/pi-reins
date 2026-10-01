@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Steering summary injection with cadence and forced triggers
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - task-lifecycle
 size: m
