@@ -102,6 +102,7 @@ export async function taskStart(
       { executionStatus: "in_progress" },
       { remove: resuming ? ["blockedReason"] : [] },
     );
+    renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
     return result(resuming ? `Resumed ${id}.` : `Started ${id}.`);
   });
 }
@@ -135,6 +136,7 @@ export async function taskComplete(
       );
     }
     writeFields(deps, task.file, { executionStatus: "done", completionSummary: summary });
+    renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
     return result(`Completed ${id}.`);
   });
 }
@@ -158,6 +160,7 @@ export async function taskBlock(
       throw new Error(`reins_task_block: task "${id}" is already done; it cannot be blocked.`);
     }
     writeFields(deps, task.file, { executionStatus: "blocked", blockedReason: reason });
+    renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
     return result(`Blocked ${id}.`);
   });
 }

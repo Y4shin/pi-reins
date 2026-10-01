@@ -245,3 +245,42 @@ describe("reins_progress", () => {
     expect(none.message).toContain("no task is in_progress");
   });
 });
+
+describe("the widget across transitions", () => {
+  test("reflects active work and counts after each transition, with two tasks in_progress at once", async () => {
+    const h = await executingHarness();
+    const rendersAfter = h.ui.widgets.length;
+
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    const afterStart = h.ui.widgets[h.ui.widgets.length - 1];
+    expect(h.ui.widgets.length).toBe(rendersAfter + 1);
+    expect(afterStart.key).toBe("pi-reins");
+    expect((afterStart.lines ?? []).join("\n")).toContain("Active: inspect-current-system");
+
+    // A second task can go in_progress while the first stays active.
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+    const both = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(both).toContain("inspect-current-system");
+    expect(both).toContain("implement-change");
+    expect(both).toContain("0/3 done");
+    expect(frontmatterOf(h.readPlanFile("100-inspect-current-system.md")).executionStatus).toBe("in_progress");
+    expect(frontmatterOf(h.readPlanFile("200-implement-change.md")).executionStatus).toBe("in_progress");
+
+    await h.dispatchTool("reins_task_block", {
+      taskId: "inspect-current-system",
+      reason: "Waiting for a user decision",
+    });
+    const afterBlock = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(afterBlock).not.toContain("Active: inspect-current-system");
+    expect(afterBlock).toContain("Blocked: inspect-current-system (Waiting for a user decision)");
+    expect(afterBlock).toContain("Active: implement-change");
+
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "implement-change",
+      completionSummary: "Provider-based loader in place.",
+    });
+    const afterComplete = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(afterComplete).toContain("1/3 done");
+    expect(afterComplete).not.toContain("Active: implement-change");
+  });
+});
