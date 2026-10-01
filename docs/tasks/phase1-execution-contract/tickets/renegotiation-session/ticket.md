@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Renegotiation triggers and the batched proposal session
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - steering-injection
 - change-proposals
