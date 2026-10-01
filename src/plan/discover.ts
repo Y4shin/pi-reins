@@ -11,6 +11,7 @@
 
 import type { FsPort } from "../deps.js";import {
   extractBindingSections,
+  extractProposalDraft,
   parseDoc,
   type IndexDocument,
   type LogDocument,
@@ -141,7 +142,10 @@ export function discoverPlanDir(fs: FsPort, root: string): PlanScan {
     }
 
     if (type === "Change Proposal") {
-      scan.proposals.push(doc as ProposalDocument);
+      // Like tasks, proposals get their body content extracted at the
+      // discover site: rationale and draft task content, consumed by
+      // validation, the proposal store, and renegotiation.
+      scan.proposals.push({ ...doc, draft: extractProposalDraft(doc.body) });
       continue;
     }
 

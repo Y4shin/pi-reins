@@ -28,7 +28,10 @@ export interface FrontmatterDoc {
 
 export interface PlanDocument extends FrontmatterDoc {}
 
-export interface ProposalDocument extends FrontmatterDoc {}
+export interface ProposalDocument extends FrontmatterDoc {
+  /** The rationale and draft task content extracted from the body. */
+  draft: ProposalDraft;
+}
 
 export interface IndexDocument extends FrontmatterDoc {}
 
@@ -164,6 +167,76 @@ export function parseDoc(
 export interface BindingExtraction {
   binding: BindingSections;
   findings: Array<Omit<ParseFinding, "file">>;
+}
+
+/** The draft task content an add proposal carries in its body. */
+export interface ProposalDraftTask {
+  id?: string;
+  title?: string;
+  description?: string;
+  acceptanceCriteria?: string;
+  constraints?: string;
+}
+
+/** The body content of a proposal: its rationale and, for additions, the draft task. */
+export interface ProposalDraft {
+  rationale?: string;
+  task?: ProposalDraftTask;
+}
+
+/** Normalize an H2 heading for matching: trimmed, inner runs collapsed, lowercase. */
+function normalizeHeading(name: string): string {
+  return name.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Extract a proposal's body content per the fs-contract: the rationale
+ * and, for additions, the draft task content (the `id:`/`title:` lines
+ * under the proposed-task heading plus the three binding sections).
+ * H2 section extraction only, like the task binding extraction.
+ */
+export function extractProposalDraft(body: string): ProposalDraft {
+  const sections = new Map<string, string>();
+  let current: string | null = null;
+  let buffer: string[] = [];
+
+  const flush = (): void => {
+    if (current !== null) sections.set(current, trimBlank(buffer).join("\n"));
+    buffer = [];
+  };
+  for (const line of body.split("\n")) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      flush();
+      current = normalizeHeading(h2[1]);
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+
+  const draft: ProposalDraft = {};
+  const rationale = sections.get("rationale");
+  if (rationale !== undefined) draft.rationale = rationale;
+
+  const task: ProposalDraftTask = {};
+  const proposed =
+    sections.get("proposed task (draft)") ?? sections.get("proposed task");
+  if (proposed !== undefined) {
+    for (const line of proposed.split("\n")) {
+      const pair = line.match(/^(id|title):\s*(.*)$/);
+      if (pair) task[pair[1] as "id" | "title"] = pair[2].trim();
+    }
+  }
+  const description = sections.get("description");
+  const acceptanceCriteria = sections.get("acceptance criteria");
+  const constraints = sections.get("constraints");
+  if (description !== undefined) task.description = description;
+  if (acceptanceCriteria !== undefined) task.acceptanceCriteria = acceptanceCriteria;
+  if (constraints !== undefined) task.constraints = constraints;
+
+  if (Object.keys(task).length > 0) draft.task = task;
+  return draft;
 }
 
 /**
