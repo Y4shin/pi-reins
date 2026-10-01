@@ -572,6 +572,48 @@ until completion-guard lands; the steering engine reads it.
 reconciling) with the phase named; renegotiation-session may need to
 widen that check.
 
+## After change-proposals (level 3)
+
+The landed surface for later tickets to consume (deviation report:
+every delta additive, no planned API surface broke a dependent):
+
+- The proposal store lives in `src/plan/proposals.ts`:
+  `proposalStore(scan)` exposes `pending()` (all recorded proposals),
+  `deferred()` (the `deferred: true` subset), and `bearingOn(taskId)`
+  (target equals taskId, or taskId appears in dependsOn/enables).
+  Ticket 9's renegotiation triggers consume it directly; the widget
+  counts from it too.
+- `ProposalDocument` gained a required `draft: ProposalDraft`
+  (rationale plus, for additions, the draft task: id, title, the three
+  binding sections), populated at the discover site via
+  `extractProposalDraft` in `src/plan/parse.ts` (H2 extraction
+  mirroring `extractBindingSections`; a bare `## Proposed task`
+  heading is accepted as a lenient fallback for the canonical
+  `## Proposed task (draft)`). Ticket 9 presents rationale and draft
+  content from `scan.proposals[].draft`; ticket 11's materialize-add
+  can reuse the extraction and the tool's body composer.
+- Recording-time refusals exceed the ticket's named two with the
+  fs-contract's remaining well-formedness rules (non-empty
+  rationale, complete draft content for add, caller-provided ids
+  refused on collision while generated ids deduplicate with numeric
+  suffixes, reserved filenames, list-shaped dependency hints, and a
+  flat-filename check refusing ids that would escape `proposals/`).
+  All are refuse-at-recording, never repair.
+- Deferred counting reads `deferred: true` strictly; a bare
+  `deferred:` marker or a YAML 1.1-style `yes` does not count until
+  ticket 9 owns the disposition marker's shape.
+- Recording refuses outside the executing phase (the fs-contract's
+  recorded-during-execution rule); like the task tools, ticket 9 may
+  need to widen that check for gate phases.
+- `reins_status` carries no proposal counts (the criteria name the
+  widget only); the widget renders `Proposals: N pending` (extended
+  with `, M deferred` when any are deferred) after Gate, omitted
+  while the pending set is empty.
+- Tests: `malformed-proposals/` joins the malformed fixture family
+  (one rule class, seven defect files); the harness gained an
+  additive `writeFixtureFile` helper for adding documents to copied
+  fixtures.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is
