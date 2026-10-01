@@ -4,6 +4,18 @@ title: Task Changelog
 ---
 # Task Changelog
 
+## 2026-10-01, Change proposal recording and visibility (change-proposals)
+The `reins_propose_change` tool records uniform change-proposal
+documents under `proposals/` (kind add/modify/remove, resolvable
+targets, rationale, draft binding sections for adds, optional
+`dependsOn`/`enables` hints) with a wide refuse-at-recording set;
+attach-time validation grew `checkProposals` plus the
+`malformed-proposals` fixture family, and the widget counts pending
+and deferred proposals while proposals stay execution-ineligible.
+Landed the proposal store (`pending()`/`deferred()`/`bearingOn()`) and
+`ProposalDocument.draft` at the discover site that tickets 9 and 11
+consume. Gate: typecheck clean, 90/90 tests.
+
 ## 2026-10-01, Task lifecycle tools with write-path enforcement (task-lifecycle)
 The five reins task tools (start with resume semantics, complete with
 required summary, block with required reason, status, progress with
