@@ -598,6 +598,122 @@ describe("reins_task_start: imminent-work entanglement", () => {
   });
 });
 
+describe("reins_propose_change: current-work bearing", () => {
+  test("recording a proposal bearing on the in-progress task opens the gate after recording", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "modify",
+      id: "cp-modify-inspect",
+      target: "inspect-current-system",
+      rationale: "The inspection scope misses the CLI entry point consumers.",
+    });
+
+    expect(outcome.isError).toBe(false);
+    // The proposal was recorded first, then the gate opened.
+    expect(outcome.message).toContain("Recorded proposal cp-modify-inspect");
+    expect(outcome.message).toMatch(/renegotiation session complete/i);
+    // The sweep deferred the freshly recorded proposal.
+    expect(h.readPlanFile("proposals/cp-modify-inspect.md")).toContain("deferred: true");
+    expect(terminateOf(outcome)).toBe(true);
+  });
+
+  test("recording a proposal that bears on nothing in progress does not open a gate", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "add",
+      id: "cp-add-unrelated",
+      rationale: "A goal-level addition, unrelated to the current task.",
+      proposedId: "new-task",
+      proposedTitle: "New task",
+      description: "d",
+      acceptanceCriteria: "a",
+      constraints: "c",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("Recorded proposal cp-add-unrelated");
+    expect(h.ui.dialogs).toEqual([]);
+    expect(terminateOf(outcome)).toBe(false);
+  });
+});
+
+describe("reins_task_complete: exhaustion of eligible agreed work", () => {
+  test("completing the last open task with a non-deferred proposal pending opens the gate", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    for (const taskId of ["inspect-current-system", "implement-change", "verify-result"]) {
+      await h.dispatchTool("reins_task_start", { taskId });
+      const completed = await h.dispatchTool("reins_task_complete", {
+        taskId,
+        completionSummary: "Done against the acceptance criteria.",
+      });
+      if (taskId === "verify-result") {
+        // The exhaustion gate fires on the completion that empties the board.
+        expect(completed.isError).toBe(false);
+        expect(completed.message).toContain("Completed verify-result");
+        expect(completed.message).toMatch(/renegotiation session complete/i);
+        expect(terminateOf(completed)).toBe(true);
+      } else {
+        expect(completed.message).toBe(`Completed ${taskId}.`);
+      }
+    }
+    // The sweep deferred the pending set.
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("deferred: true");
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Gate: executing");
+  });
+
+  test("completing a task with startable work remaining does not open a gate", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const outcome = await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Done.",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toBe("Completed inspect-current-system.");
+    expect(h.ui.dialogs).toEqual([]);
+  });
+
+  test("exhaustion with a deferred-only set does not open a gate", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile(
+      "proposals/cp-add-cli-migration.md",
+      h
+        .readPlanFile("proposals/cp-add-cli-migration.md")
+        .replace("kind: add", "kind: add\ndeferred: true"),
+    );
+
+    for (const taskId of ["inspect-current-system", "implement-change", "verify-result"]) {
+      await h.dispatchTool("reins_task_start", { taskId });
+      const outcome = await h.dispatchTool("reins_task_complete", {
+        taskId,
+        completionSummary: "Done.",
+      });
+      expect(outcome.message).toBe(`Completed ${taskId}.`);
+    }
+    expect(h.ui.dialogs).toEqual([]);
+  });
+});
+
 describe("openRenegotiationSession: the session result contract", () => {
   test("the result carries approved intents by kind and target plus the pre-session snapshot", async () => {
     const h = makeHarness({

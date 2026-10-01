@@ -146,6 +146,7 @@ export async function taskComplete(
   deps: ReinsDeps,
   state: ReinsState,
   params: Record<string, unknown>,
+  setState: (state: ReinsState) => void,
 ): Promise<TaskToolResult> {
   const planDir = requireActiveContract(state, "reins_task_complete");
   const summary = params.completionSummary;
@@ -171,7 +172,22 @@ export async function taskComplete(
     }
     writeFields(deps, task.file, { executionStatus: "done", completionSummary: summary });
     renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
-    return result(`Completed ${id}.`);
+    const completed = `Completed ${id}.`;
+
+    // Exhaustion: the completion that empties the board of eligible
+    // agreed work while a non-deferred proposal is pending opens the
+    // gate before the run winds down.
+    const cause: SessionCause = { kind: "exhaustion" };
+    if (shouldOpenSession(state, discoverPlanDir(deps.fs, planDir), cause)) {
+      const outcome = await openRenegotiationSession(deps, state, cause);
+      setState(outcome.state);
+      return {
+        content: [{ type: "text", text: `${completed} ${outcome.result.report}` }],
+        details: {},
+        ...(outcome.result.terminateRun ? { terminate: true } : {}),
+      };
+    }
+    return result(completed);
   });
 }
 
@@ -369,7 +385,7 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
         }),
       }),
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
-        taskComplete(io.deps(ctx), io.state(), params),
+        taskComplete(io.deps(ctx), io.state(), params, io.setState),
     },
     {
       name: "reins_task_block",

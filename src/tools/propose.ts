@@ -21,6 +21,7 @@ import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { dumpDocument, type FrontmatterData } from "../plan/parse.js";
 import { generatedBy } from "../plan/write.js";
+import { openRenegotiationSession, shouldOpenSession, type SessionCause } from "../handlers/renegotiate.js";
 import type { ReinsState } from "../state.js";
 import { renderWidget } from "../ui/widget.js";
 
@@ -38,6 +39,8 @@ export interface ProposeToolIo {
 export interface ProposeToolResult {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, never>;
+  /** Set when a renegotiation gate opened: the run terminates after this call. */
+  terminate?: boolean;
 }
 
 function result(text: string): ProposeToolResult {
@@ -180,6 +183,7 @@ function resolveProposalId(providedId: string | undefined, base: string, existin
 export async function proposeChange(
   deps: ReinsDeps,
   state: ReinsState,
+  setState: (state: ReinsState) => void,
   params: Record<string, unknown>,
 ): Promise<ProposeToolResult> {
   const planDir = requireExecutingContract(state, "reins_propose_change");
@@ -277,7 +281,22 @@ export async function proposeChange(
   // Plugin tool results update the widget; the pending-proposal count
   // is derived from a fresh scan, never persisted.
   renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
-  return result(`Recorded proposal ${proposalId} (${proposalKind}): ${title}.`);
+  const recorded = `Recorded proposal ${proposalId} (${proposalKind}): ${title}.`;
+
+  // Current-work bearing: a proposal recorded against the task being
+  // worked on (or otherwise bearing on an in_progress task) opens the
+  // gate before more work happens on a contested basis.
+  const cause: SessionCause = { kind: "current-work" };
+  if (shouldOpenSession(state, discoverPlanDir(deps.fs, planDir), cause)) {
+    const outcome = await openRenegotiationSession(deps, state, cause);
+    setState(outcome.state);
+    return {
+      content: [{ type: "text", text: `${recorded} ${outcome.result.report}` }],
+      details: {},
+      ...(outcome.result.terminateRun ? { terminate: true } : {}),
+    };
+  }
+  return result(recorded);
 }
 
 /** Build the reins_propose_change tool definition over injected deps and state accessors. */
@@ -329,6 +348,6 @@ export function createProposeTool(io: ProposeToolIo): ToolDefinition<any, any, a
       ),
     }),
     execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
-      proposeChange(io.deps(ctx), io.state(), params),
+      proposeChange(io.deps(ctx), io.state(), io.setState, params),
   };
 }
