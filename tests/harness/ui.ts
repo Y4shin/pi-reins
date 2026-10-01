@@ -37,13 +37,13 @@ export interface CapturedUi {
   dialogs: CapturedDialog[];
 }
 
-export function createUiStub(script: UiScript = {}): CapturedUi {
+export function createUiStub(script: UiScript = {}, hasUI = true): CapturedUi {
   const notifies: CapturedUi["notifies"] = [];
   const widgets: CapturedUi["widgets"] = [];
   const dialogs: CapturedDialog[] = [];
 
   const ui: ReinsUi = {
-    hasUI: true,
+    hasUI,
     select: async (title, options) => {
       dialogs.push({ kind: "select", title, options });
       if (typeof script.select === "function") return script.select(title, options);

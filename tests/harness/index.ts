@@ -67,6 +67,8 @@ export interface HarnessOptions {
   /** Subdirectory of the temp root holding the plan directory. Default "plan". */
   planDirName?: string;
   uiScript?: UiScript;
+  /** Whether an interactive UI exists; false exercises the fail-closed degradation of the gates. Default true. */
+  hasUI?: boolean;
   config?: Partial<ReinsConfig>;
   /** Fixed clock; defaults to the real clock. */
   now?: () => string;
@@ -131,7 +133,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
   mkdirSync(planDir, { recursive: true });
   if (options.planDir) copyFixtureContents(options.planDir, planDir);
 
-  const ui = createUiStub(options.uiScript ?? {});
+  const ui = createUiStub(options.uiScript ?? {}, options.hasUI ?? true);
   const session = { entries: [] as Array<{ customType: string; data?: unknown }> };
   const messenger = { userMessages: [] as string[], steered: [] as Array<{ content: string; options?: unknown }> };
   const toolset = { active: [] as string[], history: [] as string[][] };
