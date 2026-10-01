@@ -182,3 +182,30 @@ describe("reins_task_block", () => {
     expect(resumed.blockedReason).toBeUndefined();
   });
 });
+
+describe("reins_progress", () => {
+  test("appends to the active task's progressLog and the widget Now line shows the latest", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const first = await h.dispatchTool("reins_progress", { note: "Mapped the config entry points" });
+    expect(first.isError).toBe(false);
+    expect(first.message.split("\n")).toHaveLength(1);
+
+    const task = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
+    expect(task.progressLog).toEqual([
+      { at: "2026-10-01T12:00:00.000Z", note: "Mapped the config entry points" },
+    ]);
+
+    // Append-only: the second entry joins the first, nothing is rewritten.
+    await h.dispatchTool("reins_progress", { note: "Traced the consumers" });
+    expect(frontmatterOf(h.readPlanFile("100-inspect-current-system.md")).progressLog).toEqual([
+      { at: "2026-10-01T12:00:00.000Z", note: "Mapped the config entry points" },
+      { at: "2026-10-01T12:00:00.000Z", note: "Traced the consumers" },
+    ]);
+
+    // The widget's Now line shows the latest entry.
+    const rendered = ((h.ui.widgets[h.ui.widgets.length - 1].lines ?? [])).join("\n");
+    expect(rendered).toContain("Now: Traced the consumers");
+  });
+});

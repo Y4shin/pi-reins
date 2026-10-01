@@ -24,6 +24,7 @@ import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { writeFields } from "../plan/write.js";
 import type { TaskDocument } from "../plan/parse.js";
 import type { ReinsState } from "../state.js";
+import { renderWidget } from "../ui/widget.js";
 
 /** The deps-and-state accessors every task tool executes through. */
 export interface TaskToolIo {
@@ -165,6 +166,65 @@ function describeStatus(status: unknown): string {
   return typeof status === "string" ? status : "in an unknown status";
 }
 
+/**
+ * Record a progress note: appends `{ at, note }` to the active task's
+ * append-only progressLog (past entries are never rewritten) and
+ * re-renders the widget so the Now line shows the latest entry.
+ */
+export async function taskProgress(
+  deps: ReinsDeps,
+  state: ReinsState,
+  params: Record<string, unknown>,
+): Promise<TaskToolResult> {
+  const planDir = requireActiveContract(state, "reins_progress");
+  const note = params.note;
+  if (typeof note !== "string" || note.trim() === "") {
+    throw new Error("reins_progress: a non-empty note is required (a short progress message).");
+  }
+  const target = resolveProgressTarget(discoverPlanDir(deps.fs, planDir), params);
+  return withFileMutationQueue(join(planDir, target.file), async () => {
+    const task = findTask(discoverPlanDir(deps.fs, planDir), { taskId: params.taskId ?? target.frontmatter.id }, "reins_progress");
+    const id = String(task.frontmatter.id);
+    const existing = task.frontmatter.progressLog;
+    if (existing !== undefined && existing !== null && !Array.isArray(existing)) {
+      throw new Error(
+        `reins_progress: progressLog of task "${id}" is not a list; refusing to overwrite past entries.`,
+      );
+    }
+    // Past entries are preserved verbatim; only the new entry is added.
+    const log = Array.isArray(existing) ? [...existing] : [];
+    log.push({ at: deps.now(), note });
+    writeFields(deps, task.file, { progressLog: log });
+    renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
+    return result(`Recorded progress on ${id}.`);
+  });
+}
+
+/** The task a progress note belongs to: the named task, or the single active one. */
+function resolveProgressTarget(scan: PlanScan, params: Record<string, unknown>): TaskDocument {
+  const active = scan.tasks.filter((task) => task.frontmatter.executionStatus === "in_progress");
+  if (params.taskId !== undefined) {
+    const task = findTask(scan, params, "reins_progress");
+    if (task.frontmatter.executionStatus !== "in_progress") {
+      throw new Error(
+        `reins_progress: task "${String(task.frontmatter.id)}" is not in_progress ` +
+          `(${describeStatus(task.frontmatter.executionStatus)}); progress records active work.`,
+      );
+    }
+    return task;
+  }
+  if (active.length === 0) {
+    throw new Error(
+      "reins_progress: no task is in_progress; start one first (reins_task_start) or name the task with taskId.",
+    );
+  }
+  if (active.length > 1) {
+    const ids = active.map((task) => String(task.frontmatter.id)).join(", ");
+    throw new Error(`reins_progress: taskId is required while several tasks are in_progress (${ids}).`);
+  }
+  return active[0];
+}
+
 const TASK_ID_PARAM = Type.Object({
   taskId: Type.String({ description: "Semantic id of the task (its frontmatter id)" }),
 });
@@ -209,6 +269,19 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
       }),
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
         taskBlock(io.deps(ctx), io.state(), params),
+    },
+    {
+      name: "reins_progress",
+      label: "Record progress",
+      description:
+        "Record a progress note on the active task's durable progressLog (append-only). " +
+        "taskId is required when several tasks are in_progress.",
+      parameters: Type.Object({
+        note: Type.String({ description: "Short progress message" }),
+        taskId: Type.Optional(TASK_ID_PARAM.properties.taskId),
+      }),
+      execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
+        taskProgress(io.deps(ctx), io.state(), params),
     },
   ];
 }
