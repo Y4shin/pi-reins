@@ -222,8 +222,13 @@ export function extractBindingSections(body: string): BindingExtraction {
       if ((BINDING_NAMES as readonly string[]).includes(name)) {
         current = name as (typeof BINDING_NAMES)[number];
       } else {
-        // Unknown H2 headings under # Task are a validation concern
-        // (attach-time validation), not a parse finding.
+        // An unknown direct subheading is a validation error, not
+        // advisory prose (fs-contract, Tasks): surfaced here where the
+        // task block is parsed, reported by attach-time validation.
+        findings.push({
+          rule: "unknown-task-subheading",
+          message: `"## ${name}" under # Task is not a binding section; only Description, Acceptance Criteria, and Constraints may appear directly under # Task`,
+        });
         current = null;
       }
     } else {

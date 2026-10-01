@@ -34,7 +34,7 @@ import type {
   VerifierResult,
   VerifierRunner,
 } from "../../src/deps.js";
-import { registerReins } from "../../src/pi.js";
+import { registerReins, type ReinsDepsOptions } from "../../src/pi.js";
 import { createNodeFsPort } from "../../src/plan/fs.js";
 import { copyFixtureContents } from "./fixtures.js";
 import { createUiStub, type CapturedUi, type UiScript } from "./ui.js";
@@ -219,8 +219,17 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
   };
 
   // Wire the real registration shell over the fake api with the
-  // harness deps. This drives the same code path pi uses.
-  registerReins(api as unknown as ExtensionAPI, { createDeps: () => deps });
+  // harness deps. This drives the same code path pi uses. An fsRoot
+  // override (the attach command roots the port at the plan directory)
+  // is honored so refusals of missing plans behave as they do live.
+  registerReins(api as unknown as ExtensionAPI, {
+    createDeps: (_ctx, options?: ReinsDepsOptions) => {
+      if (options?.fsRoot !== undefined) {
+        return { ...deps, fs: createNodeFsPort(options.fsRoot) };
+      }
+      return deps;
+    },
+  });
 
   const fire = async (eventType: string, event: unknown = {}): Promise<unknown[]> => {
     const results: unknown[] = [];

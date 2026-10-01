@@ -11,9 +11,11 @@
 
 import { execFileSync } from "node:child_process";
 import { userInfo as osUserInfo } from "node:os";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { attach } from "./handlers/attach.js";
 import { defaultConfig } from "./config.js";
 import type {
   ReinsDeps,
@@ -28,27 +30,50 @@ import { freshState, type ReinsState } from "./state.js";
 /** The custom message type used for the context-tail steering summary. */
 export const STEERING_MESSAGE_TYPE = "reins-steering";
 
+export interface ReinsDepsOptions {
+  /** Filesystem root override; the attach command roots the port at the plan directory. */
+  fsRoot?: string;
+}
+
 export interface ReinsWiring {
   /** Override the real adapter factory (the test harness injects stubs). */
-  createDeps?: (ctx: ExtensionContext) => ReinsDeps;
+  createDeps?: (ctx: ExtensionContext, options?: ReinsDepsOptions) => ReinsDeps;
 }
 
 export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void {
-  const createDeps = wiring.createDeps ?? ((ctx: ExtensionContext) => createRealDeps(ctx, pi));
+  const createDeps = wiring.createDeps ?? ((ctx, options) => createRealDeps(ctx, pi, options));
   let state: ReinsState = freshState();
 
   pi.on("session_start", async (event, ctx) => {
     state = onSessionStart(createDeps(ctx), event as SessionStartEvent);
   });
+
+  pi.registerCommand("reins-attach", {
+    description:
+      "Attach an execution plan directory: validate it against the execution-plan contract and bind it on pass",
+    handler: async (args, ctx) => {
+      const planPath = resolvePlanPath(ctx.cwd, args);
+      const commandDeps = createDeps(ctx, { fsRoot: planPath });
+      const outcome = attach(commandDeps, state, planPath);
+      state = outcome.state;
+    },
+  });
+}
+
+/** Resolve the /reins-attach argument against the session cwd. */
+function resolvePlanPath(cwd: string, args: string | undefined): string | undefined {
+  const trimmed = (args ?? "").trim();
+  if (trimmed === "") return undefined;
+  return isAbsolute(trimmed) ? trimmed : resolvePath(cwd, trimmed);
 }
 
 export default function createReinsExtension(pi: ExtensionAPI): void {
   registerReins(pi);
 }
 
-function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI): ReinsDeps {
+function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: ReinsDepsOptions): ReinsDeps {
   return {
-    fs: createNodeFsPort(ctx.cwd),
+    fs: createNodeFsPort(options?.fsRoot ?? ctx.cwd),
     ui: adaptUi(ctx),
     now: () => new Date().toISOString(),
     actor: resolveActor(ctx.cwd),

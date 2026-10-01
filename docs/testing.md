@@ -59,9 +59,12 @@ or exact strings beyond the steering summary's required content lines.
 - **Fixtures**: `tests/fixtures/plan-valid/` is the conforming sample
   plan (plan document, index, log, three tasks with binding sections,
   two carrying expected declaration regexes, one change proposal, one
-  supporting doc). `tests/fixtures/malformed-*/` holds the malformed
-  family, one defect per directory; add one per new validation rule
-  class rather than inventing inline strings.
+  supporting doc). `plan-active/` and `plan-completed/` are the same
+  plan in those execution states. `tests/fixtures/malformed-*/` holds
+  the malformed family, one rule class per directory with its defects
+  in separate files, plus `malformed-multi/` carrying defects from
+  several classes for report-completeness; add one per new validation
+  rule class rather than inventing inline strings.
 
 ## Skill prose testing
 
