@@ -114,4 +114,18 @@ describe("reins_task_complete", () => {
     expect(task.executionStatus).toBe("done");
     expect(task.completionSummary).toBe("Mapped the loading path; all call sites listed in the summary.");
   });
+
+  test("refuses to complete a task that is not in_progress", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Never started this task.",
+    });
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("pending");
+    expect(outcome.message).toContain("reins_task_start");
+    expect(frontmatterOf(h.readPlanFile("100-inspect-current-system.md")).executionStatus).toBe("pending");
+  });
 });
