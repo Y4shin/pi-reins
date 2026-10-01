@@ -53,4 +53,27 @@ describe("reins_task_start", () => {
     const task = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
     expect(task.executionStatus).toBe("in_progress");
   });
+
+  test("refuses a task that is already in_progress, done, or unknown", async () => {
+    const h = await executingHarness();
+
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    const again = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    expect(again.isError).toBe(true);
+    expect(again.message).toContain("already in_progress");
+
+    h.writePlanFile(
+      "300-verify-result.md",
+      h
+        .readPlanFile("300-verify-result.md")
+        .replace("executionStatus: pending", "executionStatus: done"),
+    );
+    const done = await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+    expect(done.isError).toBe(true);
+    expect(done.message).toContain("already done");
+
+    const unknown = await h.dispatchTool("reins_task_start", { taskId: "no-such-task" });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.message).toContain("no task with id \"no-such-task\"");
+  });
 });
