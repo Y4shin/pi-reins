@@ -60,6 +60,20 @@ describe("validatePlan rule classes", () => {
     );
   });
 
+  test("vocabulary class: executionStatus values stay within their document vocabularies", () => {
+    const violations = validateFixture("malformed-status-vocabulary");
+    const statusViolations = violations.filter((v) => v.rule === "execution-status-vocabulary");
+    // plan.md carries a task-only value; 100-wrong-value.md an unknown
+    // value; 200-no-status.md none at all.
+    expect(statusViolations.map((v) => v.file).sort()).toEqual([
+      "100-wrong-value.md",
+      "200-no-status.md",
+      "plan.md",
+    ]);
+    expect(statusViolations.some((v) => v.message.includes("proposed, active, completed"))).toBe(true);
+    expect(statusViolations.some((v) => v.message.includes("pending, in_progress, blocked, done"))).toBe(true);
+  });
+
   test("binding class: every required section is present and no unknown subheading binds", () => {
     const violations = validateFixture("malformed-binding-sections");
     expect(violations).toContainEqual(

@@ -145,11 +145,50 @@ function checkBindingSections(scan: PlanScan): Violation[] {
   return violations;
 }
 
+/** executionStatus vocabularies, per the fs-contract. */
+const PLAN_STATUSES = ["proposed", "active", "completed"];
+const TASK_STATUSES = ["pending", "in_progress", "blocked", "done"];
+
+/**
+ * executionStatus vocabularies: the plan document uses the plan
+ * vocabulary, task documents the task vocabulary. Missing or
+ * out-of-vocabulary values violate the rule on either document kind.
+ */
+function checkStatusVocabularies(scan: PlanScan): Violation[] {
+  const violations: Violation[] = [];
+  if (scan.plan) {
+    const status = scan.plan.frontmatter.executionStatus;
+    if (typeof status !== "string" || !PLAN_STATUSES.includes(status)) {
+      violations.push({
+        file: scan.plan.file,
+        rule: "execution-status-vocabulary",
+        message: `plan executionStatus must be one of ${PLAN_STATUSES.join(", ")} (${describeValue(status)})`,
+      });
+    }
+  }
+  for (const task of scan.tasks) {
+    const status = task.frontmatter.executionStatus;
+    if (typeof status !== "string" || !TASK_STATUSES.includes(status)) {
+      violations.push({
+        file: task.file,
+        rule: "execution-status-vocabulary",
+        message: `task executionStatus must be one of ${TASK_STATUSES.join(", ")} (${describeValue(status)})`,
+      });
+    }
+  }
+  return violations;
+}
+
+function describeValue(value: unknown): string {
+  return value === undefined ? "missing" : `got: ${JSON.stringify(value)}`;
+}
+
 const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkParseFindings,
   checkIndexStructure,
   checkProfile,
   checkBindingSections,
+  checkStatusVocabularies,
 ];
 
 /** Validate a scan against the full execution-plan contract. */
