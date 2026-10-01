@@ -216,15 +216,14 @@ export function extractBindingSections(body: string): BindingExtraction {
   }
 
   const binding: BindingSections = {};
-  const seen = new Map<string, number>();
+  const assigned = new Set<string>();
   let current: (typeof BINDING_NAMES)[number] | null = null;
   let buffer: string[] = [];
 
   const flush = (): void => {
-    if (current !== null) {
-      if (!seen.has(current)) {
-        binding[keyOf(current)] = trimBlank(buffer).join("\n");
-      }
+    if (current !== null && !assigned.has(current)) {
+      binding[keyOf(current)] = trimBlank(buffer).join("\n");
+      assigned.add(current);
     }
     buffer = [];
   };
@@ -236,7 +235,6 @@ export function extractBindingSections(body: string): BindingExtraction {
       const name = h2[1];
       if ((BINDING_NAMES as readonly string[]).includes(name)) {
         current = name as (typeof BINDING_NAMES)[number];
-        seen.set(name, (seen.get(name) ?? 0) + 1);
       } else {
         // Unknown H2 headings under # Task are a validation concern
         // (attach-time validation), not a parse finding.

@@ -19,11 +19,88 @@ function makePlanDir(files: Record<string, string>): string {
   return dir;
 }
 
+const PLAN_MD = [
+  "---",
+  "type: Execution Plan",
+  "id: config-migration",
+  "title: Configuration loading migration",
+  "schemaVersion: 1",
+  "goal: Migrate configuration loading to the new provider model",
+  "executionStatus: proposed",
+  "revision: 1",
+  "---",
+  "",
+  "# Configuration loading migration",
+  "",
+  "This execution plan migrates configuration loading.",
+  "",
+].join("\n");
+
 afterAll(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("discoverPlanDir", () => {
+  test("discovers task documents with binding sections", () => {
+    const dir = makePlanDir({
+      "plan.md": PLAN_MD,
+      "100-implement.md": [
+        "---",
+        "type: Task",
+        "id: implement-change",
+        "title: Implement the provider-based loader",
+        "executionStatus: pending",
+        "expectedPathRegexes:",
+        "  - \"^src/config/\"",
+        "---",
+        "",
+        "Advisory preamble from the external planner.",
+        "",
+        "# Task",
+        "",
+        "## Description",
+        "",
+        "Replace the static configuration loader with the provider-based",
+        "implementation agreed in the masterplan.",
+        "",
+        "### Inputs",
+        "",
+        "The masterplan interface section.",
+        "",
+        "## Acceptance Criteria",
+        "",
+        "- The focused configuration tests pass.",
+        "",
+        "## Constraints",
+        "",
+        "- Preserve existing public behavior.",
+        "- Do not migrate callers as part of this task.",
+        "",
+        "# Appendix",
+        "",
+        "Advisory afterword.",
+        "",
+      ].join("\n"),
+    });
+
+    const scan = discoverPlanDir(createNodeFsPort(dir), dir);
+
+    expect(scan.findings).toEqual([]);
+    expect(scan.tasks).toHaveLength(1);
+    const task = scan.tasks[0];
+    expect(task.file).toBe("100-implement.md");
+    expect(task.frontmatter.id).toBe("implement-change");
+    expect(task.frontmatter.expectedPathRegexes).toEqual(["^src/config/"]);
+    expect(task.binding.description).toBe(
+      "Replace the static configuration loader with the provider-based\n" +
+        "implementation agreed in the masterplan.\n\n### Inputs\n\nThe masterplan interface section.",
+    );
+    expect(task.binding.acceptanceCriteria).toBe("- The focused configuration tests pass.");
+    expect(task.binding.constraints).toBe(
+      "- Preserve existing public behavior.\n- Do not migrate callers as part of this task.",
+    );
+  });
+
   test("discovers the plan document with frontmatter and body", () => {
     const dir = makePlanDir({
       "plan.md": [
