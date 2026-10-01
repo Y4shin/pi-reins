@@ -10,6 +10,8 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { createHarness, type ReinsHarness } from "./harness/index.js";
 
@@ -23,6 +25,77 @@ function makeHarness(options: Parameters<typeof createHarness>[0]): ReinsHarness
 
 afterEach(() => {
   for (const h of harnesses.splice(0)) h.dispose();
+});
+
+describe("reins-attach refusals", () => {
+  test("a missing path argument is refused, never improvised around", async () => {
+    const h = makeHarness({});
+
+    await h.runCommand("reins-attach", "");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("no plan directory given");
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("a nonexistent plan directory is refused with the missing-root violation", async () => {
+    const h = makeHarness({});
+
+    await h.runCommand("reins-attach", "does-not-exist");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("does-not-exist");
+    expect(h.ui.notifies[0].message).toContain("missing-plan-root");
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("an insufficient plan (no plan document) is refused with a report", async () => {
+    const h = makeHarness({});
+
+    await h.runCommand("reins-attach", "plan");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("missing-plan-document");
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("a plan path pointing at a file is refused, not crashed on", async () => {
+    const h = makeHarness({});
+    writeFileSync(join(h.root, "not-a-dir.md"), "just a file\n", "utf8");
+
+    await h.runCommand("reins-attach", "not-a-dir.md");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("missing-plan-document");
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("a completed plan is refused: there is nothing left to execute", async () => {
+    const h = makeHarness({ planDir: "plan-completed" });
+
+    await h.runCommand("reins-attach", "plan");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("completed");
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("a second attach while a contract is bound is refused", async () => {
+    const h = makeHarness({ planDir: "plan-valid" });
+
+    await h.runCommand("reins-attach", "plan");
+    await h.runCommand("reins-attach", "plan");
+
+    expect(h.ui.notifies).toHaveLength(2);
+    expect(h.ui.notifies[1].type).toBe("error");
+    expect(h.ui.notifies[1].message).toContain("already attached");
+    expect(h.session.entries).toHaveLength(1);
+  });
 });
 
 describe("reins-attach", () => {

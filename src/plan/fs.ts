@@ -36,7 +36,10 @@ export class NodeFsPort implements FsPort {
 
   list(path = ""): string[] {
     const base = joinRoot(this.root, path);
-    if (!existsSync(base)) return [];
+    // A non-directory base (e.g. the attach path points at a file) is
+    // an empty listing, never a crash: the plan-directory module
+    // reports it as findings instead.
+    if (!existsSync(base) || !statSync(base).isDirectory()) return [];
     const out: string[] = [];
     const walk = (dir: string): void => {
       for (const name of readdirSync(dir).sort()) {
