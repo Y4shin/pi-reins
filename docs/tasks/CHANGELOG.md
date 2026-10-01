@@ -4,6 +4,18 @@ title: Task Changelog
 ---
 # Task Changelog
 
+## 2026-10-01, Steering summary injection with cadence and forced triggers (steering-injection)
+The steering engine injects the measured summary variant (invariant
+header, goal, counts, active work, blocked, gate, latest progress,
+progress instruction) into the context tail on the first call of a run
+and every Nth LLM call (cadence via `--reins-cadence`, 0 disables
+periodic), with forced triggers (run start, post-compaction,
+completion attempt, `SteeringPort.forceInject`) overriding cadence;
+injections re-read the plan directory fresh and never persist. Landed
+the `takeForced` mailbox drain tickets 9 and 10 call unchanged and
+the `completionAttempted` one-shot clear ticket 7 must expect. Gate:
+typecheck clean, 101/101 tests.
+
 ## 2026-10-01, Change proposal recording and visibility (change-proposals)
 The `reins_propose_change` tool records uniform change-proposal
 documents under `proposals/` (kind add/modify/remove, resolvable
