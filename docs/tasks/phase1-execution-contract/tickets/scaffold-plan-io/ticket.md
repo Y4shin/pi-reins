@@ -22,13 +22,13 @@ conforming sample plan fixture for tests.
 
 ## Acceptance criteria
 
-- [ ] The extension loads in a print-mode pi session via the CLI
+- [x] The extension loads in a print-mode pi session via the CLI
       extension argument and is inert without an attached contract.
-- [ ] The harness drives handlers with synthetic events and scripted
+- [x] The harness drives handlers with synthetic events and scripted
       dialog stubs and asserts on outputs and durable file effects.
-- [ ] The module parses a conforming sample plan: plan document, task
+- [x] The module parses a conforming sample plan: plan document, task
       documents with binding sections, index, log.
-- [ ] Unparseable files, missing types, and malformed frontmatter are
+- [x] Unparseable files, missing types, and malformed frontmatter are
       surfaced as parse findings rather than crashes.
 
 ## Blocked by
