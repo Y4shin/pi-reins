@@ -16,6 +16,7 @@
  */
 
 import type { PlanScan } from "./discover.js";
+import type { BindingSections } from "./parse.js";
 
 /** One violated rule, located by plan-relative file path. */
 export interface Violation {
@@ -115,10 +116,40 @@ function checkPlanMetadata(scan: PlanScan): Violation[] {
   return violations;
 }
 
+/** The three binding roles of a task body, in contract order. */
+const BINDING_ROLES: ReadonlyArray<[keyof BindingSections, string]> = [
+  ["description", "Description"],
+  ["acceptanceCriteria", "Acceptance Criteria"],
+  ["constraints", "Constraints"],
+];
+
+/**
+ * Binding-section structure and roles: every task body carries all
+ * three binding sections under the `# Task` H1. Unknown H2 subheadings
+ * under `# Task` arrive as parse findings (unknown-task-subheading)
+ * and are aggregated with the rest.
+ */
+function checkBindingSections(scan: PlanScan): Violation[] {
+  const violations: Violation[] = [];
+  for (const task of scan.tasks) {
+    for (const [key, name] of BINDING_ROLES) {
+      if (task.binding[key] === undefined) {
+        violations.push({
+          file: task.file,
+          rule: "missing-binding-section",
+          message: `task body is missing the required "## ${name}" binding section under # Task`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkParseFindings,
   checkIndexStructure,
   checkProfile,
+  checkBindingSections,
 ];
 
 /** Validate a scan against the full execution-plan contract. */

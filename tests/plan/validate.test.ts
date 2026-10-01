@@ -59,4 +59,22 @@ describe("validatePlan rule classes", () => {
       expect.arrayContaining([expect.stringContaining("schemaVersion"), expect.stringContaining("goal")]),
     );
   });
+
+  test("binding class: every required section is present and no unknown subheading binds", () => {
+    const violations = validateFixture("malformed-binding-sections");
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        file: "100-missing-criteria.md",
+        rule: "missing-binding-section",
+        message: expect.stringContaining("Acceptance Criteria"),
+      }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        file: "200-extra-heading.md",
+        rule: "unknown-task-subheading",
+        message: expect.stringContaining("Notes"),
+      }),
+    );
+  });
 });
