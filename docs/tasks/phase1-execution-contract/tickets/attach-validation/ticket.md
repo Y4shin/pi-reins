@@ -4,7 +4,9 @@ subtype: feature
 title: Attach-time validation of the execution-plan contract
 status: stable
 workflow_state: ready
-blocked_by: [scaffold-plan-io]
+blocked_by:
+- scaffold-plan-io
+size: m
 ---
 
 ## What to build

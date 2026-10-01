@@ -4,7 +4,9 @@ subtype: feature
 title: Task lifecycle tools with write-path enforcement
 status: stable
 workflow_state: ready
-blocked_by: [activation]
+blocked_by:
+- activation
+size: l
 ---
 
 ## What to build

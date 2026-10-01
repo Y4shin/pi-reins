@@ -4,7 +4,9 @@ subtype: feature
 title: Change proposal recording and visibility
 status: stable
 workflow_state: ready
-blocked_by: [task-lifecycle]
+blocked_by:
+- task-lifecycle
+size: m
 ---
 
 ## What to build

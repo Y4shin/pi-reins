@@ -4,7 +4,9 @@ subtype: feature
 title: Plan completion with deferred walkthrough and verifier agent
 status: stable
 workflow_state: ready
-blocked_by: [renegotiation-session]
+blocked_by:
+- renegotiation-session
+size: l
 ---
 
 ## What to build

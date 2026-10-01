@@ -4,7 +4,9 @@ subtype: feature
 title: Steering summary injection with cadence and forced triggers
 status: stable
 workflow_state: ready
-blocked_by: [task-lifecycle]
+blocked_by:
+- task-lifecycle
+size: m
 ---
 
 ## What to build

@@ -4,7 +4,9 @@ subtype: feature
 title: User-controlled plan activation
 status: stable
 workflow_state: ready
-blocked_by: [attach-validation]
+blocked_by:
+- attach-validation
+size: m
 ---
 
 ## What to build

@@ -4,7 +4,10 @@ subtype: feature
 title: Expected-declaration steering nudges
 status: stable
 workflow_state: ready
-blocked_by: [task-lifecycle, steering-injection]
+blocked_by:
+- task-lifecycle
+- steering-injection
+size: s
 ---
 
 ## What to build

@@ -4,7 +4,10 @@ subtype: feature
 title: Renegotiation triggers and the batched proposal session
 status: stable
 workflow_state: ready
-blocked_by: [steering-injection, change-proposals]
+blocked_by:
+- steering-injection
+- change-proposals
+size: l
 ---
 
 ## What to build

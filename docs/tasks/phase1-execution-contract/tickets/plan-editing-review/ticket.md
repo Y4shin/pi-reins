@@ -4,7 +4,9 @@ subtype: feature
 title: Plan-editing enforcement, review gate, abandon, and crash recovery
 status: stable
 workflow_state: ready
-blocked_by: [renegotiation-session]
+blocked_by:
+- renegotiation-session
+size: xl
 ---
 
 ## What to build

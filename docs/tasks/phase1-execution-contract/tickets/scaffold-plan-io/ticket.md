@@ -5,6 +5,7 @@ title: Package scaffold, test harness, and plan-directory IO
 status: stable
 workflow_state: ready
 blocked_by: []
+size: l
 ---
 
 ## What to build
