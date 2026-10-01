@@ -1,0 +1,120 @@
+/**
+ * The activation flow: `/reins-activate` previews the attached plan,
+ * requires explicit confirmation, and on confirm flips the plan from
+ * proposed to active. Driven through the command boundary of the
+ * shared harness, with scripted dialog answers and captured UI calls.
+ *
+ * Activation is user-controlled: the model can neither trigger it nor
+ * bypass the confirmation. Declining changes nothing durable.
+ */
+
+import { afterEach, describe, expect, test } from "vitest";
+import YAML from "yaml";
+
+import { createHarness, type ReinsHarness } from "./harness/index.js";
+
+const harnesses: ReinsHarness[] = [];
+
+function makeHarness(options: Parameters<typeof createHarness>[0]): ReinsHarness {
+  const h = createHarness(options);
+  harnesses.push(h);
+  return h;
+}
+
+afterEach(() => {
+  for (const h of harnesses.splice(0)) h.dispose();
+});
+
+const FIXED_NOW = () => "2026-10-01T12:00:00.000Z";
+
+/** Parse the frontmatter mapping of a plan-directory document. */
+function frontmatterOf(text: string): Record<string, unknown> {
+  return YAML.parse(text.split("---\n")[1]) as Record<string, unknown>;
+}
+
+describe("reins-activate refusals", () => {
+  test("activating with nothing attached is refused", async () => {
+    const h = makeHarness({ now: FIXED_NOW });
+
+    await h.runCommand("reins-activate");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("error");
+    expect(h.ui.notifies[0].message).toContain("no contract is attached");
+    // Refusal never reaches a dialog: there is nothing to preview.
+    expect(h.ui.dialogs).toEqual([]);
+    expect(h.session.entries).toEqual([]);
+  });
+
+  test("activating an already-active contract is refused", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+
+    await h.runCommand("reins-attach", "plan");
+    await h.runCommand("reins-activate");
+
+    expect(h.ui.notifies).toHaveLength(2);
+    expect(h.ui.notifies[1].type).toBe("error");
+    expect(h.ui.notifies[1].message).toContain("already active");
+    expect(h.ui.dialogs).toEqual([]);
+    // Only the attach entry: the refusal records nothing.
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "executing" } },
+    ]);
+  });
+});
+
+describe("reins-activate preview and confirmation", () => {
+  test("the command previews goal and tasks, and declining changes nothing durable", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: false },
+    });
+    await h.runCommand("reins-attach", "plan");
+    const planBefore = h.readPlanFile("plan.md");
+    const logBefore = h.readPlanFile("log.md");
+
+    await h.runCommand("reins-activate");
+
+    // The preview: one confirmation dialog carrying the goal and the
+    // task summary, so the user understands what is about to run.
+    expect(h.ui.dialogs).toHaveLength(1);
+    expect(h.ui.dialogs[0].kind).toBe("confirm");
+    const preview = h.ui.dialogs[0].message ?? "";
+    expect(preview).toContain("Migrate configuration loading to the new provider model");
+    expect(preview).toContain("Inspect the current system");
+    expect(preview).toContain("Implement the provider-based loader");
+    expect(preview).toContain("Verify the result");
+
+    // Declining: no durable change anywhere.
+    expect(h.readPlanFile("plan.md")).toBe(planBefore);
+    expect(h.readPlanFile("log.md")).toBe(logBefore);
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "attached" } },
+    ]);
+    expect(h.ui.widgets).toEqual([]);
+    expect(h.ui.notifies).toHaveLength(2);
+    expect(h.ui.notifies[1].type).toBe("info");
+    expect(h.ui.notifies[1].message).toContain("declined");
+  });
+
+  test("on confirm the plan flips to active and the plugin enters executing", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: true },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.runCommand("reins-activate");
+
+    const plan = frontmatterOf(h.readPlanFile("plan.md"));
+    expect(plan.executionStatus).toBe("active");
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "attached" } },
+      { customType: "reins-activated", data: { planDir: h.planDir, phase: "executing" } },
+    ]);
+    expect(h.ui.notifies[1].type).toBe("info");
+    expect(h.ui.notifies[1].message).toContain("Migrate configuration loading to the new provider model");
+  });
+});

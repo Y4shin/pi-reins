@@ -16,6 +16,7 @@ import { isAbsolute, resolve as resolvePath } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { attach } from "./handlers/attach.js";
+import { activate } from "./handlers/activate.js";
 import { defaultConfig } from "./config.js";
 import type {
   ReinsDeps,
@@ -55,6 +56,16 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       const planPath = resolvePlanPath(ctx.cwd, args);
       const commandDeps = createDeps(ctx, { fsRoot: planPath });
       const outcome = attach(commandDeps, state, planPath);
+      state = outcome.state;
+    },
+  });
+
+  pi.registerCommand("reins-activate", {
+    description:
+      "Activate the attached execution contract: preview it, confirm, and begin execution",
+    handler: async (_args, ctx) => {
+      const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
+      const outcome = await activate(commandDeps, state);
       state = outcome.state;
     },
   });
