@@ -107,8 +107,8 @@ function slugify(text: string): string {
   return slug === "" ? "change" : slug;
 }
 
-/** Find a task by semantic id in a scan; the refusal names the known ids. */
-function findTask(scan: PlanScan, taskId: string): boolean {
+/** Whether a task with the semantic id exists in a scan; refusals name the known ids. */
+function hasTask(scan: PlanScan, taskId: string): boolean {
   return scan.tasks.some((candidate) => candidate.frontmatter.id === taskId);
 }
 
@@ -206,7 +206,7 @@ export async function proposeChange(
         `reins_propose_change: target is required for kind ${proposalKind} (the target task's semantic id).`,
       );
     }
-    if (!findTask(scan, targetParam)) {
+    if (!hasTask(scan, targetParam)) {
       const known = scan.tasks.map((candidate) => String(candidate.frontmatter.id ?? "(no id)")).join(", ");
       throw new Error(
         `reins_propose_change: no task with id "${targetParam}" in the contract (known ids: ${known || "none"}).`,
