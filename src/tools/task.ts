@@ -130,6 +130,29 @@ export async function taskComplete(
   });
 }
 
+/** Mark a task blocked: records the reason that is blocking it. */
+export async function taskBlock(
+  deps: ReinsDeps,
+  state: ReinsState,
+  params: Record<string, unknown>,
+): Promise<TaskToolResult> {
+  const planDir = requireActiveContract(state, "reins_task_block");
+  const reason = params.reason;
+  if (typeof reason !== "string" || reason.trim() === "") {
+    throw new Error("reins_task_block: a non-empty reason is required (what is blocking the task).");
+  }
+  const initial = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_block");
+  return withFileMutationQueue(join(planDir, initial.file), async () => {
+    const task = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_block");
+    const id = String(task.frontmatter.id);
+    if (task.frontmatter.executionStatus === "done") {
+      throw new Error(`reins_task_block: task "${id}" is already done; it cannot be blocked.`);
+    }
+    writeFields(deps, task.file, { executionStatus: "blocked", blockedReason: reason });
+    return result(`Blocked ${id}.`);
+  });
+}
+
 function describeStatus(status: unknown): string {
   return typeof status === "string" ? status : "in an unknown status";
 }
@@ -165,6 +188,19 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
       }),
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
         taskComplete(io.deps(ctx), io.state(), params),
+    },
+    {
+      name: "reins_task_block",
+      label: "Block a task",
+      description:
+        "Mark a task of the active execution contract as blocked, with the reason it is blocked. " +
+        "A non-empty reason is required; resume later with reins_task_start.",
+      parameters: Type.Object({
+        taskId: TASK_ID_PARAM.properties.taskId,
+        reason: Type.String({ description: "What is blocking the task" }),
+      }),
+      execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
+        taskBlock(io.deps(ctx), io.state(), params),
     },
   ];
 }

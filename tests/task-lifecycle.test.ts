@@ -129,3 +129,39 @@ describe("reins_task_complete", () => {
     expect(frontmatterOf(h.readPlanFile("100-inspect-current-system.md")).executionStatus).toBe("pending");
   });
 });
+
+describe("reins_task_block", () => {
+  test("requires a non-empty reason", async () => {
+    const h = await executingHarness();
+    const before = h.readPlanFile("100-inspect-current-system.md");
+
+    for (const reason of [undefined, "", "  "]) {
+      const outcome = await h.dispatchTool("reins_task_block", {
+        taskId: "inspect-current-system",
+        reason,
+      });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.message).toContain("reason");
+    }
+
+    // The refusal changed nothing durable.
+    expect(h.readPlanFile("100-inspect-current-system.md")).toBe(before);
+  });
+
+  test("marks the task blocked with its reason, durably, with a one-line result", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_task_block", {
+      taskId: "inspect-current-system",
+      reason: "Waiting for a user decision on backwards compatibility.",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("inspect-current-system");
+    expect(outcome.message.split("\n")).toHaveLength(1);
+
+    const task = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
+    expect(task.executionStatus).toBe("blocked");
+    expect(task.blockedReason).toBe("Waiting for a user decision on backwards compatibility.");
+  });
+});
