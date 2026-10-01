@@ -25,6 +25,7 @@ import type {
 } from "./deps.js";
 import { noopSteering } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
+import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createTaskTools } from "./tools/task.js";
@@ -80,6 +81,11 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   })) {
     pi.registerTool(tool);
   }
+
+  // Raw writes into the plan directory are blocked pre-execution for
+  // every bound contract; the reins_* tools are the legal alternative
+  // the block reason names.
+  pi.on("tool_call", (event, ctx) => guardPlanDirWrites(event, ctx, { planDir: state.planDir }));
 }
 
 /** Resolve the /reins-attach argument against the session cwd. */

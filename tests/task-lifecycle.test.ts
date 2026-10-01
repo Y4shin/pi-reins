@@ -324,3 +324,66 @@ describe("reins_status", () => {
     expect(attached.message).toContain("not active");
   });
 });
+
+describe("tool_call guard: raw writes into the plan directory", () => {
+  test("blocks raw edit and write calls into the plan directory with a reason naming the plugin tools", async () => {
+    const h = await executingHarness();
+
+    const write = await h.fire("tool_call", {
+      toolName: "write",
+      input: { path: "plan/100-inspect-current-system.md", content: "tampered" },
+    });
+    expect(write).toHaveLength(1);
+    const writeResult = write[0] as { block?: boolean; reason?: string };
+    expect(writeResult.block).toBe(true);
+    expect(writeResult.reason).toContain("reins_task_start");
+
+    // Absolute paths into the plan directory are blocked as well.
+    const edit = await h.fire("tool_call", {
+      toolName: "edit",
+      input: { path: `${h.planDir}/log.md`, oldText: "x", newText: "y" },
+    });
+    expect(edit).toHaveLength(1);
+    const editResult = edit[0] as { block?: boolean; reason?: string };
+    expect(editResult.block).toBe(true);
+    expect(editResult.reason).toContain("reins_");
+
+    // Nothing was written: the block happens pre-execution.
+    expect(h.readPlanFile("100-inspect-current-system.md")).not.toContain("tampered");
+  });
+
+  test("passes reads, writes outside the plan directory, and the plugin's own tools", async () => {
+    const h = await executingHarness();
+
+    // Reads are never blocked.
+    expect(
+      await h.fire("tool_call", { toolName: "read", input: { path: "plan/plan.md" } }),
+    ).toEqual([]);
+    expect(
+      await h.fire("tool_call", { toolName: "bash", input: { command: "cat plan/plan.md" } }),
+    ).toEqual([]);
+
+    // Writes outside the plan directory pass.
+    expect(
+      await h.fire("tool_call", { toolName: "write", input: { path: "src/other.py", content: "x" } }),
+    ).toEqual([]);
+    expect(
+      await h.fire("tool_call", { toolName: "bash", input: { command: "echo hi > /tmp/notes.txt" } }),
+    ).toEqual([]);
+
+    // The plugin's own tools are custom tools and are never blocked.
+    expect(
+      await h.fire("tool_call", { toolName: "reins_task_start", input: { taskId: "x" } }),
+    ).toEqual([]);
+  });
+
+  test("is inert without an attached contract", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+
+    const results = await h.fire("tool_call", {
+      toolName: "write",
+      input: { path: "plan/100-inspect-current-system.md", content: "x" },
+    });
+    expect(results).toEqual([]);
+  });
+});
