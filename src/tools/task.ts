@@ -23,6 +23,7 @@ import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { writeFields } from "../plan/write.js";
 import type { TaskDocument } from "../plan/parse.js";
+import { openRenegotiationSession, shouldOpenSession, type SessionCause } from "../handlers/renegotiate.js";
 import type { ReinsState, ReinsPhase } from "../state.js";
 import { latestProgress, renderWidget } from "../ui/widget.js";
 
@@ -32,12 +33,16 @@ export interface TaskToolIo {
   deps: (ctx: unknown) => ReinsDeps;
   /** Live read of the ephemeral plugin state. */
   state: () => ReinsState;
+  /** Propagate state changes made by a gate opened mid-tool (renegotiation). */
+  setState: (state: ReinsState) => void;
 }
 
 /** One-line text result, the shape pi surfaces to the model. */
 export interface TaskToolResult {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, never>;
+  /** Set when a renegotiation gate opened: the run terminates after this call. */
+  terminate?: boolean;
 }
 
 function result(text: string): TaskToolResult {
@@ -78,9 +83,39 @@ export async function taskStart(
   deps: ReinsDeps,
   state: ReinsState,
   params: Record<string, unknown>,
+  setState: (state: ReinsState) => void,
 ): Promise<TaskToolResult> {
   const planDir = requireActiveContract(state, "reins_task_start");
-  const initial = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_start");
+  const scan = discoverPlanDir(deps.fs, planDir);
+  const initial = findTask(scan, params, "reins_task_start");
+  const id = String(initial.frontmatter.id);
+  const status = initial.frontmatter.executionStatus;
+  if (status === "in_progress") {
+    throw new Error(`reins_task_start: task "${id}" is already in_progress.`);
+  }
+  if (status === "done") {
+    throw new Error(`reins_task_start: task "${id}" is already done.`);
+  }
+  // Imminent-work entanglement: work about to start on a task a
+  // non-deferred proposal bears on opens the gate first. The start is
+  // not applied; the model retries once the contract is active again.
+  const cause: SessionCause = { kind: "task-start", taskId: id };
+  if (shouldOpenSession(state, scan, cause)) {
+    const outcome = await openRenegotiationSession(deps, state, cause);
+    setState(outcome.state);
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            `reins: starting ${id} is entangled with a pending change proposal; ` +
+            `a renegotiation session opened and the task was not started. ${outcome.result.report}`,
+        },
+      ],
+      details: {},
+      ...(outcome.result.terminateRun ? { terminate: true } : {}),
+    };
+  }
   return withFileMutationQueue(join(planDir, initial.file), async () => {
     // Fresh scan inside the queue: read and write of one file are one
     // atomic read-modify-write step.
@@ -112,6 +147,7 @@ export async function taskComplete(
   deps: ReinsDeps,
   state: ReinsState,
   params: Record<string, unknown>,
+  setState: (state: ReinsState) => void,
 ): Promise<TaskToolResult> {
   const planDir = requireActiveContract(state, "reins_task_complete");
   const summary = params.completionSummary;
@@ -137,7 +173,22 @@ export async function taskComplete(
     }
     writeFields(deps, task.file, { executionStatus: "done", completionSummary: summary });
     renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
-    return result(`Completed ${id}.`);
+    const completed = `Completed ${id}.`;
+
+    // Exhaustion: the completion that empties the board of eligible
+    // agreed work while a non-deferred proposal is pending opens the
+    // gate before the run winds down.
+    const cause: SessionCause = { kind: "exhaustion" };
+    if (shouldOpenSession(state, discoverPlanDir(deps.fs, planDir), cause)) {
+      const outcome = await openRenegotiationSession(deps, state, cause);
+      setState(outcome.state);
+      return {
+        content: [{ type: "text", text: `${completed} ${outcome.result.report}` }],
+        details: {},
+        ...(outcome.result.terminateRun ? { terminate: true } : {}),
+      };
+    }
+    return result(completed);
   });
 }
 
@@ -320,7 +371,7 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
         "directory. Use the task's semantic id (frontmatter id), never the file path.",
       parameters: TASK_ID_PARAM,
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
-        taskStart(io.deps(ctx), io.state(), params),
+        taskStart(io.deps(ctx), io.state(), params, io.setState),
     },
     {
       name: "reins_task_complete",
@@ -335,7 +386,7 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
         }),
       }),
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
-        taskComplete(io.deps(ctx), io.state(), params),
+        taskComplete(io.deps(ctx), io.state(), params, io.setState),
     },
     {
       name: "reins_task_block",

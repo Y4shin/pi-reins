@@ -4,7 +4,7 @@
  * Every path is resolved against the root and must stay inside it.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { FsPort } from "../deps.js";
@@ -59,6 +59,10 @@ export class NodeFsPort implements FsPort {
     const absolute = joinRoot(this.root, path);
     mkdirSync(dirname(absolute), { recursive: true });
     writeFileSync(absolute, content, "utf8");
+  }
+
+  delete(path: string): void {
+    rmSync(joinRoot(this.root, path));
   }
 }
 
