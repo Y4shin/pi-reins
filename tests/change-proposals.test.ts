@@ -177,6 +177,25 @@ describe("reins_propose_change: malformed proposals are refused at recording tim
     expect(h.planFiles()).toEqual(filesBefore);
   });
 
+  test("deduplicates generated ids when the same addition is recorded twice", async () => {
+    const h = await executingHarness();
+    const params = {
+      kind: "add",
+      rationale: "The goal also covers the CLI.",
+      proposedId: "migrate-cli-flags",
+      proposedTitle: "Migrate the CLI flags",
+      description: "d",
+      acceptanceCriteria: "a",
+      constraints: "c",
+    };
+
+    expect((await h.dispatchTool("reins_propose_change", params)).isError).toBe(false);
+    const second = await h.dispatchTool("reins_propose_change", params);
+    expect(second.isError).toBe(false);
+    expect(second.message).toContain("cp-add-migrate-the-cli-flags-2");
+    expect(h.planFiles()).toContain("proposals/cp-add-migrate-the-cli-flags-2.md");
+  });
+
   test("writes optional dependency hints and a generated id when kind add omits one", async () => {
     const h = await executingHarness();
 
