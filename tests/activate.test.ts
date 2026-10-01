@@ -88,6 +88,27 @@ describe("activation log record", () => {
   });
 });
 
+describe("activation widget", () => {
+  test("the widget renders goal and counts after activation and nothing before", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: true },
+    });
+    await h.runCommand("reins-attach", "plan");
+    // Nothing is rendered for a merely attached (proposed) plan.
+    expect(h.ui.widgets).toEqual([]);
+
+    await h.runCommand("reins-activate");
+
+    expect(h.ui.widgets).toHaveLength(1);
+    expect(h.ui.widgets[0].key).toBe("pi-reins");
+    const rendered = (h.ui.widgets[0].lines ?? []).join("\n");
+    expect(rendered).toContain("Migrate configuration loading to the new provider model");
+    expect(rendered).toContain("0/3");
+  });
+});
+
 describe("reins-activate refusals", () => {
   test("activating with nothing attached is refused", async () => {
     const h = makeHarness({ now: FIXED_NOW });

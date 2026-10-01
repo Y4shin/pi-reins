@@ -26,6 +26,7 @@ import {
 } from "../plan/write.js";
 import { transition, type ReinsPhase, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
+import { renderWidget } from "../ui/widget.js";
 
 /** The custom type of the private session entry recording the activation. */
 export const ACTIVATED_ENTRY_TYPE = "reins-activated";
@@ -95,6 +96,8 @@ export async function activate(
   appendVerifiedEvent(deps, scan.plan.file, deps.actor);
   const nextState = transition(state, "executing");
   deps.session.appendEntry(ACTIVATED_ENTRY_TYPE, { planDir, phase: nextState.phase });
+  // The widget appears with execution, never before it.
+  renderWidget(deps, nextState, scan);
 
   const report =
     `Activated execution contract: ${goalOf(scan)} (${scan.tasks.length} tasks). ` +
