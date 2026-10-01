@@ -15,6 +15,9 @@ import YAML from "yaml";
 import type { FsPort } from "../deps.js";
 import { dumpDocument, splitFrontmatter, type FrontmatterData } from "./parse.js";
 
+/** The plan-root change log (reserved OKF filename at the plan root). */
+export const LOG_FILE = "log.md";
+
 export interface WriteDeps {
   fs: FsPort;
   now: () => string;
@@ -65,4 +68,40 @@ export function writeFields(
   data.generated = { by: generatedBy(), at: deps.now() };
 
   deps.fs.write(file, dumpDocument(data, split.body));
+}
+
+/**
+ * Whether the plan-root log already carries an entry with the given
+ * leading bold word (the closed entry vocabulary). A missing log has
+ * no entries.
+ */
+export function logHasEntry(fs: FsPort, word: string): boolean {
+  if (!fs.exists(LOG_FILE)) return false;
+  const entry = new RegExp(`^[*-]\\s+\\*\\*${word}\\*\\*`);
+  return fs.read(LOG_FILE).split("\n").some((line) => entry.test(line));
+}
+
+/**
+ * Prepend an entry to the plan-root log, newest first: under today's
+ * date heading when the log already groups by it, in a new date group
+ * above the existing ones otherwise. The log body is edited in place;
+ * the reserved log carries no frontmatter and gets no `generated`
+ * stamp (that family is for plan and task documents).
+ */
+export function prependLogEntry(deps: WriteDeps, word: string, text: string): void {
+  const date = deps.now().slice(0, 10);
+  const entry = `* **${word}**: ${text}`;
+  const lines = deps.fs.read(LOG_FILE).split("\n");
+
+  const firstHeading = lines.findIndex((line) => /^##\s+\d{4}-\d{2}-\d{2}\s*$/.test(line));
+  if (firstHeading === -1) {
+    lines.push("", `## ${date}`, entry);
+  } else if (lines[firstHeading].trim() === `## ${date}`) {
+    lines.splice(firstHeading + 1, 0, entry);
+  } else {
+    lines.splice(firstHeading, 0, `## ${date}`, entry, "");
+  }
+
+  const body = lines.join("\n");
+  deps.fs.write(LOG_FILE, body.endsWith("\n") ? body : `${body}\n`);
 }

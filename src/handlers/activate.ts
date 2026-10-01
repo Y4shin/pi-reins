@@ -18,7 +18,7 @@
 
 import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
-import { writeFields } from "../plan/write.js";
+import { prependLogEntry, writeFields } from "../plan/write.js";
 import { transition, type ReinsPhase, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
 
@@ -78,6 +78,7 @@ export async function activate(
   }
 
   writeFields(deps, scan.plan.file, { executionStatus: "active" });
+  prependLogEntry(deps, "Activation", "Plan activated by the user; execution begins.");
   const nextState = transition(state, "executing");
   deps.session.appendEntry(ACTIVATED_ENTRY_TYPE, { planDir, phase: nextState.phase });
 

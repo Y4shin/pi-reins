@@ -32,6 +32,27 @@ function frontmatterOf(text: string): Record<string, unknown> {
   return YAML.parse(text.split("---\n")[1]) as Record<string, unknown>;
 }
 
+describe("activation log record", () => {
+  test("confirming appends the Activation entry newest-first without duplicating Creation", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: true },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.runCommand("reins-activate");
+
+    const log = h.readPlanFile("log.md");
+    expect(log).toContain("## 2026-10-01");
+    expect(log).toContain("* **Activation**: Plan activated by the user; execution begins.");
+    // The planner's Creation entry is kept, never duplicated.
+    expect(log.split("**Creation**").length - 1).toBe(1);
+    // Newest first: the activation date group precedes the existing one.
+    expect(log.indexOf("## 2026-10-01")).toBeLessThan(log.indexOf("## 2026-09-01"));
+  });
+});
+
 describe("reins-activate refusals", () => {
   test("activating with nothing attached is refused", async () => {
     const h = makeHarness({ now: FIXED_NOW });
