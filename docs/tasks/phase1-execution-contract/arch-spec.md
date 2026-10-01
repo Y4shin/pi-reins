@@ -534,6 +534,44 @@ plan document; contract drift belongs to out-of-band-detection
 adjacent writes in one call sequence; a crash between them stays
 divergent until out-of-band-detection lands.
 
+## After task-lifecycle (level 2)
+
+The landed surface for later tickets to consume (deviation report:
+no planned API surface broke a dependent):
+
+- The tool_call guard (`src/handlers/tool-call.ts`) blocks raw edit,
+write, and shell writes into the plan directory whenever a contract
+is bound (every phase), not only while executing; arch-spec decision
+3 wins over the ticket-contract wording, and gate-phase tickets
+inherit the block for free. It exports `rawWriteTargets` and
+`shellWriteTargets` as the composition surface the nudge observer
+(ticket 10) and the plan-editing inversion (ticket 11) extend.
+Shell write detection is best-effort and documented (redirection
+operands, write-command positional args, cp/mv last-arg targets,
+`dd of=`; `cd`-relative targets, process substitution, and unquoted
+variable paths can evade it).
+- `withFileMutationQueue` is the pi runtime's own export (per-file
+serialization shared with built-in edit and write), not a
+plugin-local queue; every later plan-directory writer reuses the
+runtime symbol.
+- `writeFields` gained an optional `{ remove?: string[] }` option
+(additive; existing callers unaffected): resume deletes
+`blockedReason` rather than nulling it.
+- `src/tools/task.ts` exports `contractStatus(deps, state)` /
+`ContractStatus` whose `remaining` field is the remaining-work listing
+completion-guard (ticket 7) reuses; `reins_status` is its compact
+one-line rendering via `formatStatus`.
+- `src/ui/widget.ts` exports `latestProgress` (the shared Now-line
+derivation across tasks, ties broken by append order); widget line
+order is goal, Active, Now, done/total counts, Blocked, Gate, empty
+sections omitted; proposal counts land with change-proposals
+(ticket 5).
+- `state.completionAttempted` is declared on `ReinsState` but unset
+until completion-guard lands; the steering engine reads it.
+- The task tools refuse during gate phases (renegotiating,
+reconciling) with the phase named; renegotiation-session may need to
+widen that check.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is

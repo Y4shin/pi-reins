@@ -46,6 +46,11 @@ export interface ReinsState {
   phase: ReinsPhase;
   /** The attached plan directory path, once a contract is attached. */
   planDir?: string;
+  /**
+   * Set when a completion attempt has been made; the steering engine
+   * reads it to force an injection (the completion-guard ticket sets it).
+   */
+  completionAttempted?: boolean;
 }
 
 export function freshState(): ReinsState {

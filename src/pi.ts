@@ -25,8 +25,10 @@ import type {
 } from "./deps.js";
 import { noopSteering } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
+import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
+import { createTaskTools } from "./tools/task.js";
 
 /** The custom message type used for the context-tail steering summary. */
 export const STEERING_MESSAGE_TYPE = "reins-steering";
@@ -69,6 +71,21 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       state = outcome.state;
     },
   });
+
+  // The task lifecycle tools are the only write path into task state;
+  // they read the live state and execute against deps rooted at the
+  // plan directory (the harness's createDeps override honors fsRoot).
+  for (const tool of createTaskTools({
+    deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+    state: () => state,
+  })) {
+    pi.registerTool(tool);
+  }
+
+  // Raw writes into the plan directory are blocked pre-execution for
+  // every bound contract; the reins_* tools are the legal alternative
+  // the block reason names.
+  pi.on("tool_call", (event, ctx) => guardPlanDirWrites(event, ctx, { planDir: state.planDir }));
 }
 
 /** Resolve the /reins-attach argument against the session cwd. */

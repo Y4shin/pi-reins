@@ -4,6 +4,16 @@ title: Task Changelog
 ---
 # Task Changelog
 
+## 2026-10-01, Task lifecycle tools with write-path enforcement (task-lifecycle)
+The five reins task tools (start with resume semantics, complete with
+required summary, block with required reason, status, progress with
+append-only progressLog) are the only write path into task state; a
+tool_call guard blocks raw edit, write, and shell writes into the plan
+directory in every bound state, naming the plugin tool; the widget
+gained Active, Now, and counts lines. Landed the contractStatus
+remaining-work listing and the guard's write-target exports tickets 7,
+10, and 11 build on. Gate: typecheck clean, 71/71 tests.
+
 ## 2026-10-01, User-controlled plan activation (activation)
 `/reins-activate` previews the plan (goal plus task summary) and on
 confirmation flips executionStatus to active, ensures the Creation

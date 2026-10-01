@@ -5,7 +5,8 @@
 - **Vitest** (test runner) plus **`tsc --noEmit`** (type checking).
   Source and tests are TypeScript ESM; vitest transforms them directly,
   no build step. The suite runs with `npm test`, type checking with
-  `npm run typecheck`.
+  `npm run typecheck`. No dedicated linter is configured yet, so
+  `tsc --noEmit` is the only static gate.
 - The suite never uses an LLM and never touches the network. The one
   exception outside the default gate is the inert-load check
   (`tests/inert-load.test.ts`), which shells out to the real `pi` CLI
