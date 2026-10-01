@@ -23,8 +23,8 @@ import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { writeFields } from "../plan/write.js";
 import type { TaskDocument } from "../plan/parse.js";
-import type { ReinsState } from "../state.js";
-import { renderWidget } from "../ui/widget.js";
+import type { ReinsState, ReinsPhase } from "../state.js";
+import { latestProgress, renderWidget } from "../ui/widget.js";
 
 /** The deps-and-state accessors every task tool executes through. */
 export interface TaskToolIo {
@@ -228,6 +228,83 @@ function resolveProgressTarget(scan: PlanScan, params: Record<string, unknown>):
   return active[0];
 }
 
+/** The structured contract status behind `reins_status`. */
+export interface ContractStatus {
+  phase: ReinsPhase;
+  goal: string;
+  total: number;
+  done: number;
+  /** Tasks currently in_progress (active work). */
+  active: TaskDocument[];
+  /** Tasks blocked, carrying their reasons. */
+  blocked: TaskDocument[];
+  /** Every task that is not done: pending, in_progress, or blocked. */
+  remaining: TaskDocument[];
+  /** The latest progressLog entry across tasks, when any. */
+  now?: { at: string; note: string; taskId: string };
+}
+
+/**
+ * Compute the contract status from a fresh scan. Also the completion
+ * guard's input surface: `remaining` is the remaining-work listing
+ * completion is refused against.
+ */
+export function contractStatus(deps: ReinsDeps, state: ReinsState): ContractStatus {
+  const planDir = requireActiveContract(state, "reins_status");
+  const scan = discoverPlanDir(deps.fs, planDir);
+  const goal = scan.plan?.frontmatter.goal;
+  const byStatus = (status: string): TaskDocument[] =>
+    scan.tasks.filter((task) => task.frontmatter.executionStatus === status);
+  const done = byStatus("done").length;
+  const now = latestProgress(scan);
+  return {
+    phase: state.phase,
+    goal: typeof goal === "string" ? goal : "(no goal)",
+    total: scan.tasks.length,
+    done,
+    active: byStatus("in_progress"),
+    blocked: byStatus("blocked"),
+    remaining: scan.tasks.filter((task) => task.frontmatter.executionStatus !== "done"),
+    now: now === undefined ? undefined : { at: now.at, note: now.note, taskId: now.taskId },
+  };
+}
+
+function idOf(task: TaskDocument): string {
+  return String(task.frontmatter.id ?? task.file);
+}
+
+/** Collapse any whitespace runs so a field fits the one-line result. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** Render the compact one-line status result. */
+export function formatStatus(status: ContractStatus): string {
+  const parts = [
+    status.phase,
+    `tasks ${status.done}/${status.total} done`,
+    `active: ${status.active.map(idOf).join(", ") || "none"}`,
+  ];
+  if (status.now !== undefined) {
+    parts.push(`Now: ${status.now.note}`);
+  }
+  if (status.blocked.length > 0) {
+    const blocked = status.blocked.map((task) => {
+      const reason = task.frontmatter.blockedReason;
+      return typeof reason === "string" && reason.trim() !== ""
+        ? `${idOf(task)} (${oneLine(reason)})`
+        : idOf(task);
+    });
+    parts.push(`blocked: ${blocked.join(", ")}`);
+  }
+  return `reins: ${parts.join("; ")}`;
+}
+
+/** The read-only compact status view. */
+export async function taskStatus(deps: ReinsDeps, state: ReinsState): Promise<TaskToolResult> {
+  return result(formatStatus(contractStatus(deps, state)));
+}
+
 const TASK_ID_PARAM = Type.Object({
   taskId: Type.String({ description: "Semantic id of the task (its frontmatter id)" }),
 });
@@ -285,6 +362,16 @@ export function createTaskTools(io: TaskToolIo): Array<ToolDefinition<any, any, 
       }),
       execute: async (_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
         taskProgress(io.deps(ctx), io.state(), params),
+    },
+    {
+      name: "reins_status",
+      label: "Contract status",
+      description:
+        "Compact one-line view of the active execution contract: gate state, done/total counts, " +
+        "active work, the latest progress note, and blocked tasks.",
+      parameters: Type.Object({}),
+      execute: async (_toolCallId, _params: Record<string, unknown>, _signal, _onUpdate, ctx) =>
+        taskStatus(io.deps(ctx), io.state()),
     },
   ];
 }

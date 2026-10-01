@@ -284,3 +284,43 @@ describe("the widget across transitions", () => {
     expect(afterComplete).not.toContain("Active: implement-change");
   });
 });
+
+describe("reins_status", () => {
+  test("reports a compact one-line view: gate, counts, active work, Now line, blocked", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    await h.dispatchTool("reins_progress", { note: "Mapped the config entry points" });
+    await h.dispatchTool("reins_task_block", {
+      taskId: "verify-result",
+      reason: "Waiting for a user decision on scope.",
+    });
+
+    const outcome = await h.dispatchTool("reins_status");
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message.split("\n")).toHaveLength(1);
+    expect(outcome.message).toContain("executing");
+    expect(outcome.message).toContain("0/3");
+    expect(outcome.message).toContain("inspect-current-system");
+    expect(outcome.message).toContain("Now: Mapped the config entry points");
+    expect(outcome.message).toContain("verify-result");
+    expect(outcome.message).toContain("Waiting for a user decision on scope.");
+  });
+
+  test("is refused without an active contract", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+
+    const detached = await h.dispatchTool("reins_status");
+    expect(detached.isError).toBe(true);
+    expect(detached.message).toContain("no contract is attached");
+
+    await h.runCommand("reins-attach", "plan");
+    // The plan-active fixture attaches as executing; drive the attached
+    // (proposed) refusal from a proposed plan instead.
+    const proposed = makeHarness({ planDir: "plan-valid", now: FIXED_NOW });
+    await proposed.runCommand("reins-attach", "plan");
+    const attached = await proposed.dispatchTool("reins_status");
+    expect(attached.isError).toBe(true);
+    expect(attached.message).toContain("not active");
+  });
+});
