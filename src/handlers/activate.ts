@@ -18,7 +18,12 @@
 
 import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
-import { logHasEntry, prependLogEntry, writeFields } from "../plan/write.js";
+import {
+  appendVerifiedEvent,
+  logHasEntry,
+  prependLogEntry,
+  writeFields,
+} from "../plan/write.js";
 import { transition, type ReinsPhase, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
 
@@ -85,6 +90,9 @@ export async function activate(
     prependLogEntry(deps, "Creation", "Initial proposed plan.");
   }
   prependLogEntry(deps, "Activation", "Plan activated by the user; execution begins.");
+  // The verified event and the Activation entry are written together
+  // by this writer (fs-contract, Generated and Verified).
+  appendVerifiedEvent(deps, scan.plan.file, deps.actor);
   const nextState = transition(state, "executing");
   deps.session.appendEntry(ACTIVATED_ENTRY_TYPE, { planDir, phase: nextState.phase });
 

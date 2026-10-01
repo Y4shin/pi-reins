@@ -87,7 +87,10 @@ function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: Reins
     fs: createNodeFsPort(options?.fsRoot ?? ctx.cwd),
     ui: adaptUi(ctx),
     now: () => new Date().toISOString(),
-    actor: resolveActor(ctx.cwd),
+    // The verified-event actor comes from the plan directory's own
+    // repository when one exists (the fs-contract's rule); commands
+    // root the port at the plan directory, so prefer that root here.
+    actor: resolveActor(options?.fsRoot ?? ctx.cwd),
     config: defaultConfig(),
     session: {
       appendEntry: (customType, data) => {

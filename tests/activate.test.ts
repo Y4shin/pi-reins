@@ -70,6 +70,22 @@ describe("activation log record", () => {
     const group = log.slice(log.indexOf("## 2026-10-01"));
     expect(group.indexOf("**Activation**")).toBeLessThan(group.indexOf("**Creation**"));
   });
+  test("confirming appends the first verified event with a human actor", async () => {
+    const h = makeHarness({
+      planDir: "plan-valid",
+      now: FIXED_NOW,
+      uiScript: { confirm: true },
+    });
+    await h.runCommand("reins-attach", "plan");
+
+    await h.runCommand("reins-activate");
+
+    const plan = frontmatterOf(h.readPlanFile("plan.md"));
+    const verified = plan.verified as Array<{ by: string; at: string }>;
+    expect(verified).toHaveLength(1);
+    expect(verified[0].by).toBe("human:harness-test-user");
+    expect(verified[0].at).toBe("2026-10-01T12:00:00.000Z");
+  });
 });
 
 describe("reins-activate refusals", () => {

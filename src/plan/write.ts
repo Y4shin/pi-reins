@@ -71,6 +71,40 @@ export function writeFields(
 }
 
 /**
+ * Append a `verified` event (`{ by, at }`, OKF 0.2 §5.2) to a plan
+ * document's frontmatter: a list, extending an existing list or
+ * normalizing a bare single-event mapping to one first (upstream §5.2).
+ * The actor is the human actor id with the `human:` prefix applied
+ * here, at the verified-event write (upstream §7): the event reads as
+ * human-reviewed. Written together with the corresponding log entry by
+ * the same writer at the call site, so the two records cannot diverge.
+ */
+export function appendVerifiedEvent(deps: WriteDeps, file: string, actor: string): void {
+  const split = splitFrontmatter(deps.fs.read(file));
+  let data: FrontmatterData = {};
+  if (split.frontmatterText !== null) {
+    const parsed = YAML.parse(split.frontmatterText);
+    if (parsed !== null && parsed !== undefined) {
+      if (typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error(`cannot append a verified event: frontmatter of ${file} is not a mapping`);
+      }
+      data = parsed as FrontmatterData;
+    }
+  }
+
+  const existing = data.verified;
+  if (existing !== undefined && existing !== null && typeof existing !== "object") {
+    throw new Error(
+      `cannot append a verified event: "verified" in ${file} is ${typeof existing}, not an event or event list`,
+    );
+  }
+  const events: unknown[] = Array.isArray(existing) ? [...existing] : existing != null ? [existing] : [];
+  events.push({ by: `human:${actor}`, at: deps.now() });
+
+  writeFields(deps, file, { verified: events });
+}
+
+/**
  * Whether the plan-root log already carries an entry with the given
  * leading bold word (the closed entry vocabulary). A missing log has
  * no entries.
