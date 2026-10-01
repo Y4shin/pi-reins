@@ -208,4 +208,40 @@ describe("reins_progress", () => {
     const rendered = ((h.ui.widgets[h.ui.widgets.length - 1].lines ?? [])).join("\n");
     expect(rendered).toContain("Now: Traced the consumers");
   });
+
+  test("requires taskId while several tasks are in_progress, and refuses with none active", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+
+    const ambiguous = await h.dispatchTool("reins_progress", { note: "Unclear whose progress" });
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.message).toContain("taskId is required");
+    expect(ambiguous.message).toContain("inspect-current-system");
+    expect(ambiguous.message).toContain("implement-change");
+
+    // Naming one of them records the note on that task only.
+    const named = await h.dispatchTool("reins_progress", {
+      note: "Provider model sketched",
+      taskId: "implement-change",
+    });
+    expect(named.isError).toBe(false);
+    expect(frontmatterOf(h.readPlanFile("200-implement-change.md")).progressLog).toEqual([
+      { at: "2026-10-01T12:00:00.000Z", note: "Provider model sketched" },
+    ]);
+    expect(frontmatterOf(h.readPlanFile("100-inspect-current-system.md")).progressLog).toBeUndefined();
+
+    // With nothing active, progress recording is refused.
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "inspect-current-system",
+      completionSummary: "Done.",
+    });
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "implement-change",
+      completionSummary: "Done.",
+    });
+    const none = await h.dispatchTool("reins_progress", { note: "No active work" });
+    expect(none.isError).toBe(true);
+    expect(none.message).toContain("no task is in_progress");
+  });
 });
