@@ -24,6 +24,11 @@ export function copyFixture(name: string): string {
   return dir;
 }
 
+/** Copy a fixture's contents into an existing target directory. */
+export function copyFixtureContents(name: string, target: string): void {
+  cpSync(join(FIXTURES_DIR, name), target, { recursive: true });
+}
+
 /** Remove every temp directory created by copyFixture. */
 export function cleanupFixtures(): void {
   for (const dir of created.splice(0)) {
