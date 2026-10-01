@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Attach-time validation of the execution-plan contract
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - scaffold-plan-io
 size: m
