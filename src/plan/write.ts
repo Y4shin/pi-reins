@@ -49,6 +49,7 @@ export function writeFields(
   deps: WriteDeps,
   file: string,
   fields: FrontmatterData,
+  opts: { remove?: string[] } = {},
 ): void {
   const text = deps.fs.read(file);
   const split = splitFrontmatter(text);
@@ -64,6 +65,7 @@ export function writeFields(
     }
   }
 
+  for (const key of opts.remove ?? []) delete data[key];
   data = { ...data, ...fields };
   data.generated = { by: generatedBy(), at: deps.now() };
 

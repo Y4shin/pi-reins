@@ -92,8 +92,16 @@ export async function taskStart(
     if (status === "done") {
       throw new Error(`reins_task_start: task "${id}" is already done.`);
     }
-    writeFields(deps, task.file, { executionStatus: "in_progress" });
-    return result(`Started ${id}.`);
+    // Blocked -> start is a resume: the stale blocked reason no longer
+    // applies and is removed from the frontmatter entirely.
+    const resuming = status === "blocked";
+    writeFields(
+      deps,
+      task.file,
+      { executionStatus: "in_progress" },
+      { remove: resuming ? ["blockedReason"] : [] },
+    );
+    return result(resuming ? `Resumed ${id}.` : `Started ${id}.`);
   });
 }
 

@@ -164,4 +164,21 @@ describe("reins_task_block", () => {
     expect(task.executionStatus).toBe("blocked");
     expect(task.blockedReason).toBe("Waiting for a user decision on backwards compatibility.");
   });
+
+  test("starting a blocked task resumes it and clears the blocked reason", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_block", {
+      taskId: "inspect-current-system",
+      reason: "Waiting for a user decision on backwards compatibility.",
+    });
+
+    const outcome = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("inspect-current-system");
+    const resumed = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
+    expect(resumed.executionStatus).toBe("in_progress");
+    // Resume: the stale blocked reason no longer applies and is gone.
+    expect(resumed.blockedReason).toBeUndefined();
+  });
 });
