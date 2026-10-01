@@ -18,6 +18,7 @@ import {
 import { Type } from "typebox";
 
 import type { ReinsDeps } from "../deps.js";
+import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import { dumpDocument, type FrontmatterData } from "../plan/parse.js";
 import { generatedBy } from "../plan/write.js";
 import type { ReinsState } from "../state.js";
@@ -87,6 +88,29 @@ function composeProposalBody(params: {
   return lines.join("\n");
 }
 
+/** The proposal kinds, per the execution-plan contract. */
+const PROPOSAL_KINDS = ["add", "modify", "remove"] as const;
+
+type ProposalKind = (typeof PROPOSAL_KINDS)[number];
+
+/**
+ * Slug a title or task id into a proposal-id fragment: lowercase,
+ * non-alphanumerics collapsed to single dashes.
+ */
+function slugify(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  return slug === "" ? "change" : slug;
+}
+
+/** Find a task by semantic id in a scan; the refusal names the known ids. */
+function findTask(scan: PlanScan, taskId: string): boolean {
+  return scan.tasks.some((candidate) => candidate.frontmatter.id === taskId);
+}
+
 /** Record a change proposal: writes a proposal document under proposals/. */
 export async function proposeChange(
   deps: ReinsDeps,
@@ -97,36 +121,67 @@ export async function proposeChange(
   const kind = params.kind;
   const rationale = params.rationale;
 
-  if (kind !== "add") {
-    throw new Error(`reins_propose_change: kind must be one of add, modify, remove (got: ${String(kind)}).`);
+  if (typeof kind !== "string" || !(PROPOSAL_KINDS as readonly string[]).includes(kind)) {
+    throw new Error(
+      `reins_propose_change: kind must be one of ${PROPOSAL_KINDS.join(", ")} (got: ${String(kind)}).`,
+    );
   }
   if (typeof rationale !== "string" || rationale.trim() === "") {
     throw new Error("reins_propose_change: a non-empty rationale is required (why the current plan no longer suffices).");
   }
+
+  const scan = discoverPlanDir(deps.fs, planDir);
+  const proposalKind = kind as ProposalKind;
+
+  // Modify and remove bind to agreed work: the target must name a task
+  // of the contract. Additions draft new work instead.
+  let target: string | undefined;
+  if (proposalKind === "modify" || proposalKind === "remove") {
+    const targetParam = params.target;
+    if (typeof targetParam !== "string" || targetParam.trim() === "") {
+      throw new Error(
+        `reins_propose_change: target is required for kind ${proposalKind} (the target task's semantic id).`,
+      );
+    }
+    if (!findTask(scan, targetParam)) {
+      const known = scan.tasks.map((candidate) => String(candidate.frontmatter.id ?? "(no id)")).join(", ");
+      throw new Error(
+        `reins_propose_change: no task with id "${targetParam}" in the contract (known ids: ${known || "none"}).`,
+      );
+    }
+    target = targetParam;
+  }
+
   const proposedId = params.proposedId;
-  if (typeof proposedId !== "string" || proposedId.trim() === "") {
+  if (proposalKind === "add" && (typeof proposedId !== "string" || proposedId.trim() === "")) {
     throw new Error("reins_propose_change: proposedId is required for kind add (the draft task's semantic id).");
   }
 
-  const proposalId = typeof params.id === "string" && params.id.trim() !== "" ? params.id.trim() : proposedId;
   const proposedTitle =
     typeof params.proposedTitle === "string" && params.proposedTitle.trim() !== ""
       ? params.proposedTitle
-      : proposedId;
+      : (proposedId as string);
   const title =
-    typeof params.title === "string" && params.title.trim() !== "" ? params.title : proposedTitle;
+    typeof params.title === "string" && params.title.trim() !== ""
+      ? params.title
+      : proposalKind === "add"
+        ? proposedTitle
+        : (target as string);
+  const providedId = typeof params.id === "string" && params.id.trim() !== "" ? params.id.trim() : undefined;
+  const proposalId = providedId ?? `cp-${proposalKind}-${slugify(title)}`;
 
   const frontmatter: FrontmatterData = {
     type: "Change Proposal",
     id: proposalId,
-    kind,
+    kind: proposalKind,
     generated: { by: generatedBy(), at: deps.now() },
   };
+  if (target !== undefined) frontmatter.target = target;
   const body = composeProposalBody({
-    kind,
+    kind: proposalKind,
     title,
     rationale,
-    proposedId,
+    proposedId: typeof proposedId === "string" ? proposedId : undefined,
     proposedTitle,
     description: typeof params.description === "string" ? params.description : undefined,
     acceptanceCriteria: typeof params.acceptanceCriteria === "string" ? params.acceptanceCriteria : undefined,
@@ -137,7 +192,7 @@ export async function proposeChange(
   await withFileMutationQueue(join(planDir, file), async () => {
     deps.fs.write(file, dumpDocument(frontmatter, body));
   });
-  return result(`Recorded proposal ${proposalId} (add): ${title}.`);
+  return result(`Recorded proposal ${proposalId} (${proposalKind}): ${title}.`);
 }
 
 /** Build the reins_propose_change tool definition over injected deps and state accessors. */

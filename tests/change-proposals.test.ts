@@ -49,6 +49,73 @@ const ADD_PARAMS = {
   constraints: "- Preserve existing flag names.",
 };
 
+describe("reins_propose_change: modify and remove require a resolvable target", () => {
+  test("records a modification with the target task id", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "modify",
+      id: "cp-modify-inspect",
+      target: "inspect-current-system",
+      rationale: "The task's scope misses the CLI entry point consumers.",
+      title: "Widen the inspection task",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("cp-modify-inspect");
+    expect(outcome.message.split("\n")).toHaveLength(1);
+
+    const text = h.readPlanFile("proposals/cp-modify-inspect.md");
+    const frontmatter = frontmatterOf(text);
+    expect(frontmatter.type).toBe("Change Proposal");
+    expect(frontmatter.kind).toBe("modify");
+    expect(frontmatter.target).toBe("inspect-current-system");
+    expect(text).toContain("## Rationale");
+    // Modifications carry no draft task content.
+    expect(text).not.toContain("## Proposed task (draft)");
+  });
+
+  test("records a removal with the target task id", async () => {
+    const h = await executingHarness();
+
+    const outcome = await h.dispatchTool("reins_propose_change", {
+      kind: "remove",
+      target: "verify-result",
+      rationale: "Existing behavior is covered by the implementation task's criteria.",
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message.split("\n")).toHaveLength(1);
+    const files = h.planFiles().filter((f) => f.startsWith("proposals/"));
+    expect(files).toHaveLength(2); // the fixture's own proposal plus this one
+    const text = h.readPlanFile(files[files.length - 1]);
+    expect(frontmatterOf(text).kind).toBe("remove");
+    expect(frontmatterOf(text).target).toBe("verify-result");
+  });
+
+  test("refuses modify and remove without a target or with an unresolvable one", async () => {
+    const h = await executingHarness();
+
+    const noTarget = await h.dispatchTool("reins_propose_change", {
+      kind: "modify",
+      rationale: "A modification without a target.",
+    });
+    expect(noTarget.isError).toBe(true);
+    expect(noTarget.message).toContain("target");
+
+    const unresolvable = await h.dispatchTool("reins_propose_change", {
+      kind: "remove",
+      target: "no-such-task",
+      rationale: "A removal of work that does not exist.",
+    });
+    expect(unresolvable.isError).toBe(true);
+    expect(unresolvable.message).toContain("no-such-task");
+
+    // The refusals wrote nothing durable.
+    expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
+  });
+});
+
 describe("reins_propose_change: recording an addition", () => {
   test("writes a proposal document with the draft binding sections", async () => {
     const h = await executingHarness();
