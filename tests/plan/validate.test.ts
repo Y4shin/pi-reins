@@ -146,4 +146,38 @@ describe("validatePlan rule classes", () => {
       }),
     );
   });
+
+  test("proposal class: id, kind, target, draft content, rationale, and dependency hints hold", () => {
+    const violations = validateFixture("malformed-proposals");
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "proposals/100-unknown-kind.md", rule: "proposal-kind" }),
+    );
+    // Both an unresolvable and a missing target violate the target rule.
+    const targetViolations = violations.filter((v) => v.rule === "proposal-target");
+    expect(targetViolations.map((v) => v.file).sort()).toEqual([
+      "proposals/200-unresolvable-target.md",
+      "proposals/300-remove-without-target.md",
+    ]);
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        file: "proposals/400-add-missing-draft.md",
+        rule: "proposal-draft",
+        message: expect.stringContaining("Acceptance Criteria"),
+      }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "proposals/500-missing-id.md", rule: "proposal-id" }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "proposals/600-missing-rationale.md", rule: "proposal-rationale" }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({ file: "proposals/700-bad-dependency-hints.md", rule: "proposal-dependencies" }),
+    );
+  });
+
+  test("proposal class: the well-formed sample proposal raises no proposal violations", () => {
+    const violations = validateFixture("plan-valid").filter((v) => v.rule.startsWith("proposal-"));
+    expect(violations).toEqual([]);
+  });
 });

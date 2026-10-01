@@ -29,6 +29,7 @@ import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createTaskTools } from "./tools/task.js";
+import { createProposeTool } from "./tools/propose.js";
 
 /** The custom message type used for the context-tail steering summary. */
 export const STEERING_MESSAGE_TYPE = "reins-steering";
@@ -81,6 +82,13 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   })) {
     pi.registerTool(tool);
   }
+
+  pi.registerTool(
+    createProposeTool({
+      deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+      state: () => state,
+    }),
+  );
 
   // Raw writes into the plan directory are blocked pre-execution for
   // every bound contract; the reins_* tools are the legal alternative
