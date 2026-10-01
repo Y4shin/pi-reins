@@ -52,6 +52,10 @@ or exact strings beyond the steering summary's required content lines.
 - **Scripted dialogs fail closed**: an unscripted `confirm` answers
   `false`, `select` and `input` answer `undefined`, which is exactly
   the no-UI degradation the gates must handle.
+- **No-UI mode**: `createHarness`/`createUiStub` accept `hasUI`
+  (default `true`); with `hasUI: false` the UI port reports no
+  interactive UI, so gates exercise their fail-closed refusal path
+  (one error notification, nothing durable) at the UI-port seam.
 - **Recorder ports**: session entries, messenger calls, toolset
   changes, steering force-injects, and verifier requests are all
   captured on the harness (`h.session`, `h.messenger`, `h.toolset`,

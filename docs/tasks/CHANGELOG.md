@@ -4,6 +4,17 @@ title: Task Changelog
 ---
 # Task Changelog
 
+## 2026-10-01, User-controlled plan activation (activation)
+`/reins-activate` previews the plan (goal plus task summary) and on
+confirmation flips executionStatus to active, ensures the Creation
+entry then appends the Activation entry, writes the first human-actor
+verified event, enters executing, and renders the minimal widget;
+without an interactive UI it blocks fail-closed through `requireUi`.
+Landed the acceptance write utilities (`prependLogEntry`,
+`appendVerifiedEvent`) plan-editing-review reuses, and settled the
+actor resolution pass-down. Gate: typecheck clean, 53/53 tests
+including the live inert-load check.
+
 ## 2026-10-01, Attach-time validation of the execution-plan contract (attach-validation)
 `validatePlan` returns every violation `{ file, rule, message }` with
 rule classes composed via a `RULE_CHECKS` extension point (reserved

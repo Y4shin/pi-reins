@@ -16,6 +16,7 @@ import { isAbsolute, resolve as resolvePath } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { attach } from "./handlers/attach.js";
+import { activate } from "./handlers/activate.js";
 import { defaultConfig } from "./config.js";
 import type {
   ReinsDeps,
@@ -58,6 +59,16 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       state = outcome.state;
     },
   });
+
+  pi.registerCommand("reins-activate", {
+    description:
+      "Activate the attached execution contract: preview it, confirm, and begin execution",
+    handler: async (_args, ctx) => {
+      const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
+      const outcome = await activate(commandDeps, state);
+      state = outcome.state;
+    },
+  });
 }
 
 /** Resolve the /reins-attach argument against the session cwd. */
@@ -76,7 +87,10 @@ function createRealDeps(ctx: ExtensionContext, pi: ExtensionAPI, options?: Reins
     fs: createNodeFsPort(options?.fsRoot ?? ctx.cwd),
     ui: adaptUi(ctx),
     now: () => new Date().toISOString(),
-    actor: resolveActor(ctx.cwd),
+    // The verified-event actor comes from the plan directory's own
+    // repository when one exists (the fs-contract's rule); commands
+    // root the port at the plan directory, so prefer that root here.
+    actor: resolveActor(options?.fsRoot ?? ctx.cwd),
     config: defaultConfig(),
     session: {
       appendEntry: (customType, data) => {
