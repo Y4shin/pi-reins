@@ -10,7 +10,14 @@
 - The suite never uses an LLM and never touches the network. The one
   exception outside the default gate is the inert-load check
   (`tests/inert-load.test.ts`), which shells out to the real `pi` CLI
-  and is skipped when the binary is absent.
+  and is skipped when the binary is absent. The spawned CLI inherits
+  the parent environment: a session that exports `PI_PACKAGE_DIR`
+  pointing at a different pi package (for example a subagent session
+  running a newer nix pi) makes the repo-pinned `pi` resolve that
+  package's theme files and crash on theme load before any extension
+  loads, failing the test. Run the suite from an environment without
+  `PI_PACKAGE_DIR`, or strip it from the spawned env, so the check
+  exercises the repo-pinned CLI against its own package resources.
 
 ## Run commands
 
