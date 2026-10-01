@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Change proposal recording and visibility
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - task-lifecycle
 size: m
