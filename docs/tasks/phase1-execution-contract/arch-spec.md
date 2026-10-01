@@ -427,6 +427,43 @@ engine reads) and out-of-band-detection can land independently.
 Recommended order if available: change-proposals, steering-injection,
 completion-guard, out-of-band-detection.
 
+# As-built amendments (recorded after each landed ticket)
+
+## After scaffold-plan-io (level 0)
+
+The landed surface for later tickets to consume (deviation report:
+no planned API surface broke a dependent):
+
+- Parsing is one generic `parseDoc` plus `extractBindingSections`,
+  composed at the discover site; there are no per-kind parser
+  functions. Consume `PlanScan` (it also carries the scan `root`).
+- Finding rules shipped: `unparseable-frontmatter`,
+  `frontmatter-not-mapping`, `missing-frontmatter`, `missing-type`,
+  `missing-task-heading`, `missing-plan-root`, `unreadable-file`,
+  `missing-plan-document`. The malformed fixture family grows by one
+  directory per validation rule class (no inline fixture strings).
+- `writeFields` throws on unparseable frontmatter (callers surface it
+  as a tool error) and re-serializes frontmatter: YAML comments and
+  non-semantic formatting are lost, bodies preserved verbatim.
+- `deps.actor` is a scaffold placeholder: resolved eagerly from the
+  session cwd repository, a plain string without the `human:` prefix.
+  attach-validation revisits resolution when the plan directory lives
+  outside the cwd repository; activation owns applying the `human:`
+  prefix at the verified-event write, per the fs-contract.
+- The real FsPort is rooted at `ctx.cwd` until attach owns the plan
+  path (the harness roots it at the temp plan dir). The real
+  VerifierRunner refuses visibly until plan-completion lands; the port
+  shape is fixed: `VerifierRequest { contract, changeDigest }` to
+  `VerifierResult { fulfilled, gaps }`.
+- The harness is a superset of the planned surface: `createHarness`
+  also takes `now` and `verifier`, and exposes `fire`, `dispatchTool`
+  (thrown refusals become isError outcomes exactly as pi reports
+  them), `runCommand`, and recorder ports; it wires the real
+  `registerReins` over a fake ExtensionAPI, so tests exercise the
+  same registration path pi uses.
+- `src/handlers/session.ts` and `src/plan/fs.ts` exist in the shared
+  layout beyond the scaffold ticket's export list.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is
