@@ -32,6 +32,8 @@ export interface TaskToolIo {
   deps: (ctx: unknown) => ReinsDeps;
   /** Live read of the ephemeral plugin state. */
   state: () => ReinsState;
+  /** Propagate state changes made by a gate opened mid-tool (renegotiation). */
+  setState: (state: ReinsState) => void;
 }
 
 /** One-line text result, the shape pi surfaces to the model. */

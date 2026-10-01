@@ -10,12 +10,15 @@
  * at the gate. Driven through the shared harness seams.
  */
 
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import { discoverPlanDir } from "../src/plan/discover.js";
 import { shouldOpenSession } from "../src/handlers/renegotiate.js";
 import type { ReinsState } from "../src/state.js";
-import { createHarness, type ReinsHarness } from "./harness/index.js";
+import { createHarness, type ReinsHarness, type ToolOutcome } from "./harness/index.js";
 
 const harnesses: ReinsHarness[] = [];
 
@@ -35,6 +38,29 @@ const FIXED_NOW = () => "2026-10-01T12:00:00.000Z";
 function executingState(h: ReinsHarness): ReinsState {
   return { phase: "executing", planDir: h.planDir };
 }
+
+/** The terminate flag a tool result carries when the gate opened. */
+function terminateOf(outcome: ToolOutcome): boolean {
+  return (outcome.result as { terminate?: boolean } | undefined)?.terminate === true;
+}
+
+/** A modify proposal document body used across the sweep tests. */
+const MODIFY_VERIFY_PROPOSAL = [
+  "---",
+  "type: Change Proposal",
+  "id: cp-modify-verify",
+  "kind: modify",
+  "target: verify-result",
+  "title: Narrow the verification",
+  "---",
+  "",
+  "# Change Proposal: Narrow the verification",
+  "",
+  "## Rationale",
+  "",
+  "The full-suite comparison is redundant with the focused tests.",
+  "",
+].join("\n");
 
 describe("shouldOpenSession: trigger evaluation", () => {
   test("current-work: a non-deferred proposal bearing on an in_progress task triggers", () => {
@@ -190,5 +216,107 @@ describe("shouldOpenSession: trigger evaluation", () => {
       expect(shouldOpenSession({ phase, planDir: h.planDir }, scan, { kind: "initiative" })).toBe(false);
     }
     expect(shouldOpenSession({ phase: "executing" }, scan, { kind: "initiative" })).toBe(false);
+  });
+});
+
+describe("reins_renegotiate: the initiative gate", () => {
+  test("opens a session over the entire pending set, deferred items included", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+    // A deferred proposal stays in the sweep; it just never triggers.
+    h.writePlanFile(
+      "proposals/cp-add-cli-migration.md",
+      h
+        .readPlanFile("proposals/cp-add-cli-migration.md")
+        .replace("kind: add", "kind: add\ndeferred: true"),
+    );
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    // One blocking dialog per pending proposal, the deferred one included.
+    expect(h.ui.dialogs).toHaveLength(2);
+    for (const dialog of h.ui.dialogs) {
+      expect(dialog.kind).toBe("select");
+      expect(dialog.options).toEqual(["Approve", "Defer", "Reject"]);
+    }
+    // The addition presents its rationale and its draft task content.
+    const addDialog = h.ui.dialogs.find((d) => d.title.includes("cp-add-cli-migration"));
+    expect(addDialog?.title).toContain("(add)");
+    expect(addDialog?.title).toContain(
+      "The current plan no longer suffices because the goal also covers the",
+    );
+    expect(addDialog?.title).toContain("migrate-cli-flags");
+    expect(addDialog?.title).toContain("Migrate the CLI flag parsing onto the provider model.");
+    // The modification presents its rationale and its target.
+    const modifyDialog = h.ui.dialogs.find((d) => d.title.includes("cp-modify-verify"));
+    expect(modifyDialog?.title).toContain("(modify)");
+    expect(modifyDialog?.title).toContain("verify-result");
+    expect(modifyDialog?.title).toContain(
+      "The full-suite comparison is redundant with the focused tests.",
+    );
+
+    // The gate opened: the run terminates after the tool call.
+    expect(terminateOf(outcome)).toBe(true);
+    // The gate state appeared on the widget, and the sweep returned to executing.
+    const rendered = h.ui.widgets.map((w) => (w.lines ?? []).join("\n"));
+    expect(rendered.some((text) => text.includes("Gate: renegotiating"))).toBe(true);
+    expect(rendered[rendered.length - 1]).toContain("Gate: executing");
+    expect(outcome.message).toMatch(/renegotiation session/i);
+  });
+
+  test("without an interactive UI the session blocks fail-closed", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW, hasUI: false });
+    await h.runCommand("reins-attach", "plan");
+    const filesBefore = h.planFiles();
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("interactive UI");
+    // No dialog was shown, nothing durable changed, nothing rendered.
+    expect(h.ui.dialogs).toEqual([]);
+    expect(h.planFiles()).toEqual(filesBefore);
+    expect(h.ui.widgets).toEqual([]);
+    // The session never opened, so no gate state was recorded.
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "executing" } },
+    ]);
+  });
+
+  test("with no pending proposals the tool refuses", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    rmSync(join(h.planDir, "proposals"), { recursive: true, force: true });
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("no pending change proposals");
+    expect(h.ui.dialogs).toEqual([]);
+  });
+
+  test("the session terminates the run at the gate and the current task stays in_progress", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: { select: "Defer" },
+    });
+    await h.runCommand("reins-attach", "plan");
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    expect(terminateOf(outcome)).toBe(true);
+    // The gate never touches the current task: it stays in progress.
+    expect(h.readPlanFile("100-inspect-current-system.md")).toContain(
+      "executionStatus: in_progress",
+    );
   });
 });
