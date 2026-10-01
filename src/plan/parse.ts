@@ -161,20 +161,6 @@ export function parseDoc(
   return { doc: { file, frontmatter, body: split.body }, findings };
 }
 
-export interface ParsedTask {
-  doc: TaskDocument | null;
-  findings: ParseFinding[];
-}
-
-/** Parse a task document: frontmatter plus binding-section extraction. */
-export function parseTaskDocument(text: string, file: string): ParsedTask {
-  const { doc, findings } = parseDoc(text, file);
-  if (doc === null) return { doc: null, findings };
-  const extraction = extractBindingSections(doc.body);
-  findings.push(...extraction.findings.map((f) => ({ ...f, file })));
-  return { doc: { ...doc, binding: extraction.binding }, findings };
-}
-
 export interface BindingExtraction {
   binding: BindingSections;
   findings: Array<Omit<ParseFinding, "file">>;

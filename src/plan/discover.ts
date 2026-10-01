@@ -40,8 +40,6 @@ export interface PlanScan {
   findings: ParseFinding[];
 }
 
-const RESERVED = new Set(["index.md", "log.md"]);
-
 export function discoverPlanDir(fs: FsPort, root: string): PlanScan {
   const scan: PlanScan = {
     root,
@@ -90,17 +88,20 @@ export function discoverPlanDir(fs: FsPort, root: string): PlanScan {
       continue;
     }
 
-    if (file === "index.md") {
+    // Reserved filenames keep their OKF meaning at every level: they
+    // never serve as task, phase, or plan documents and are exempt
+    // from the non-reserved type rule.
+    const base = file.slice(file.lastIndexOf("/") + 1);
+    if (base === "index.md" || base === "log.md") {
       const { doc, findings } = parseDoc(text, file, { frontmatterOptional: true });
       scan.findings.push(...findings);
-      if (doc !== null) scan.index = doc as IndexDocument;
-      continue;
-    }
-
-    if (file === "log.md") {
-      const { doc, findings } = parseDoc(text, file, { frontmatterOptional: true });
-      scan.findings.push(...findings);
-      if (doc !== null) scan.log = doc as LogDocument;
+      if (file === "index.md" && doc !== null) {
+        scan.index = doc as IndexDocument;
+      } else if (file === "log.md" && doc !== null) {
+        scan.log = doc as LogDocument;
+      } else {
+        scan.supporting.push(file);
+      }
       continue;
     }
 

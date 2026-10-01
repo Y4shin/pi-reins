@@ -178,6 +178,24 @@ describe("discoverPlanDir", () => {
     expect(scan.supporting).toEqual(["010-context.md"]);
   });
 
+  test("nested reserved index and log files stay exempt from the type rule", () => {
+    const dir = makePlanDir({
+      "plan.md": PLAN_MD,
+      "sub/index.md": ["# Subsection", "", "* [Something](something.md)"].join("\n"),
+      "sub/log.md": ["# Sub Log", "", "## 2026-09-02", "* **Update**: Something happened."].join("\n"),
+    });
+
+    const scan = discoverPlanDir(createNodeFsPort(dir), dir);
+
+    // Reserved at every level: no missing-type findings, never tasks.
+    expect(scan.findings).toEqual([]);
+    expect(scan.tasks).toEqual([]);
+    // Only the root index and log are the scan's index and log.
+    expect(scan.index).toBeUndefined();
+    expect(scan.log).toBeUndefined();
+    expect(scan.supporting).toEqual(["sub/index.md", "sub/log.md"]);
+  });
+
   test("reports a missing plan document as a finding instead of crashing", () => {
     const dir = makePlanDir({ "notes.md": "---\ntype: Context\n---\n\nnothing here\n" });
 
