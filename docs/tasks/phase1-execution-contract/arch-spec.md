@@ -614,6 +614,53 @@ every delta additive, no planned API surface broke a dependent):
   additive `writeFixtureFile` helper for adding documents to copied
   fixtures.
 
+## After steering-injection (level 4)
+
+The landed surface for later tickets to consume (deviation report:
+every delta additive, no planned API surface broke a dependent):
+
+- `SteeringPort` gained an optional `takeForced(): ForcedTrigger[]`
+  mailbox drain (plus the exported `ForcedTrigger` shape): the
+  engine's context leg drains queued triggers to force the next
+  eligible injection regardless of cadence, carrying any note as a
+  `Note: ...` line. `forceInject(reason, note?)` remains the single
+  override entry point, so the nudge observer (ticket 10) and the
+  renegotiation machinery (ticket 9) call it unchanged; the extension
+  is optional (`noopSteering` leaves it unset).
+- Steered phases are the explicit set in the engine: `executing`,
+  `renegotiating`, `plan-editing`, `reviewing`, `reconciling`;
+  `completed` is excluded by judgment (steering ends with the
+  contract). Ticket 9 should confirm the gate phases want steering;
+  the summary carries the Gate line, which is the point there.
+- The engine reads `state.completionAttempted` and one-shot-clears it
+  on the injection that consumes it. `completion-guard` (ticket 7)
+  owns the setter (`reins_complete`) and must expect the clear; the
+  forcing path is implemented but untested until that setter lands
+  (deliberate pass-down, covered end-to-end by ticket 7's declared
+  seam).
+- `STEERING_MESSAGE_TYPE` moved from `src/pi.ts` to
+  `src/steering/engine.ts` (avoids an import cycle); `src/pi.ts`
+  re-exports it, so the public export surface is unchanged.
+- Cadence: `resolveConfig` accepts non-negative integers only for
+  `--reins-cadence` (anything else keeps the default 4); a cadence
+  of 0 disables periodic injection while forced triggers still
+  inject. Flag parsing is prod glue outside the four test seams
+  (only its registration is exercised via the inert-load check).
+- The summary implements this spec's named line list exactly
+  (invariant header, goal, counts, active work, blocked, gate,
+  latest progress line, progress-recording instruction), composing
+  to roughly 267 to 340 characters on the plan-active fixture. The
+  earlier "roughly 445 characters" figure measured the prototype's
+  richer variant (contract title/status, pending proposal counts, a
+  Next line) that this list omits.
+- The context handler types its result structurally (`ContextResult`
+  in `src/steering/engine.ts`): the peer dependency's
+  `ContextEventResult` exists only in `types.d.ts` and is not
+  exported from its package index.
+- Tests: the harness steering recorder doubles as the forced-trigger
+  mailbox (`takeForced` drains `h.steering.forced`), documented in
+  `docs/testing.md`.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is
