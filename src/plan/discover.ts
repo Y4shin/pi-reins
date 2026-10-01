@@ -9,8 +9,7 @@
  * every level and never serve as task, phase, or plan documents.
  */
 
-import type { FsPort } from "../deps.js";
-import {
+import type { FsPort } from "../deps.js";import {
   extractBindingSections,
   parseDoc,
   type IndexDocument,
@@ -20,6 +19,13 @@ import {
   type ProposalDocument,
   type TaskDocument,
 } from "./parse.js";
+
+/** Types whose documents must never live under reserved filenames. */
+const EXECUTION_TYPES = ["Task", "Phase", "Execution Plan", "Change Proposal"];
+
+function isExecutionType(value: unknown): boolean {
+  return typeof value === "string" && EXECUTION_TYPES.includes(value);
+}
 
 export interface PlanScan {
   /** The plan directory root, as passed in. */
@@ -95,10 +101,23 @@ export function discoverPlanDir(fs: FsPort, root: string): PlanScan {
     if (base === "index.md" || base === "log.md") {
       const { doc, findings } = parseDoc(text, file, { frontmatterOptional: true });
       scan.findings.push(...findings);
-      if (file === "index.md" && doc !== null) {
-        scan.index = doc as IndexDocument;
-      } else if (file === "log.md" && doc !== null) {
-        scan.log = doc as LogDocument;
+      if (doc !== null) {
+        // A reserved file carrying an execution type would silently
+        // never bind; flag it rather than let it vanish.
+        if (isExecutionType(doc.frontmatter.type)) {
+          scan.findings.push({
+            file,
+            rule: "reserved-filename-role",
+            message: `${base} is reserved at every level and cannot serve as a ${String(doc.frontmatter.type)} document`,
+          });
+        }
+        if (file === "index.md") {
+          scan.index = doc as IndexDocument;
+        } else if (file === "log.md") {
+          scan.log = doc as LogDocument;
+        } else {
+          scan.supporting.push(file);
+        }
       } else {
         scan.supporting.push(file);
       }
@@ -123,6 +142,19 @@ export function discoverPlanDir(fs: FsPort, root: string): PlanScan {
 
     if (type === "Change Proposal") {
       scan.proposals.push(doc as ProposalDocument);
+      continue;
+    }
+
+    if (type === "Execution Plan") {
+      // Exactly one plan document exists in a plan directory: the plan
+      // root's plan.md. A nested Execution Plan document is flagged,
+      // not silently ignored.
+      scan.findings.push({
+        file,
+        rule: "reserved-filename-role",
+        message: "only the plan root's plan.md serves as the plan document; nested plan documents are not part of the bundle",
+      });
+      scan.supporting.push(file);
       continue;
     }
 

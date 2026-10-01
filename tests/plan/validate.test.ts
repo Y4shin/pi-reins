@@ -60,6 +60,18 @@ describe("validatePlan rule classes", () => {
     );
   });
 
+  test("reserved-filename class: reserved files never serve as task, phase, or plan documents", () => {
+    const dir = copyFixture("malformed-reserved-filename");
+    const scan = discoverPlanDir(createNodeFsPort(dir), dir);
+    const violations = validatePlan(scan);
+    // The reserved files carry execution roles and are flagged...
+    const reserved = violations.filter((v) => v.rule === "reserved-filename-role");
+    expect(reserved.map((v) => v.file).sort()).toEqual(["sub/index.md", "sub/plan.md"]);
+    // ...and they never silently become contract documents.
+    expect(scan.tasks).toEqual([]);
+    expect(scan.supporting).toContain("sub/index.md");
+  });
+
   test("id class: task ids are required and unique within the plan", () => {
     const violations = validateFixture("malformed-duplicate-ids");
     expect(violations).toContainEqual(
