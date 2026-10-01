@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Package scaffold, test harness, and plan-directory IO
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by: []
 size: l
 ---
