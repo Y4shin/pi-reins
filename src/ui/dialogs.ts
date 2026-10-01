@@ -9,17 +9,16 @@
 import type { ReinsDeps } from "../deps.js";
 
 /**
- * Require an interactive UI for a user decision. Returns true when a
- * UI exists; otherwise notifies the refusal (error) and returns false,
- * so the calling gate acts exactly like any other refusal and changes
- * nothing durable.
+ * Require an interactive UI for a user decision. Returns null when a
+ * UI exists; otherwise notifies the refusal (error) once and returns
+ * it, so the calling gate can surface the same report as its result
+ * and changes nothing durable.
  */
-export function requireUi(deps: ReinsDeps, action: string): boolean {
-  if (deps.ui.hasUI) return true;
-  deps.ui.notify(
+export function requireUi(deps: ReinsDeps, action: string): string | null {
+  if (deps.ui.hasUI) return null;
+  const refusal =
     `reins: ${action} needs an interactive UI to confirm with you; ` +
-      "refusing rather than acting without confirmation.",
-    "error",
-  );
-  return false;
+    "refusing rather than acting without confirmation.";
+  deps.ui.notify(refusal, "error");
+  return refusal;
 }

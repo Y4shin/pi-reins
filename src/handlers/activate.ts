@@ -58,12 +58,10 @@ export async function activate(
       "reins-activate: the contract is already active; there is nothing to activate.",
     );
   }
-  if (!requireUi(deps, "Activation")) {
-    return refuse(
-      deps,
-      state,
-      "reins-activate: refused because no interactive UI is available to confirm the activation.",
-    );
+  const uiRefusal = requireUi(deps, "Activation");
+  if (uiRefusal !== null) {
+    // The guard already notified the refusal; surface it verbatim.
+    return { state, result: { ok: false, report: uiRefusal } };
   }
 
   const planDir = state.planDir;

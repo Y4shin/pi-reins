@@ -109,6 +109,31 @@ describe("activation widget", () => {
   });
 });
 
+describe("reins-activate without UI", () => {
+  test("activation without an interactive UI blocks fail-closed instead of auto-approving", async () => {
+    const h = makeHarness({ planDir: "plan-valid", now: FIXED_NOW, hasUI: false });
+    await h.runCommand("reins-attach", "plan");
+    const planBefore = h.readPlanFile("plan.md");
+    const logBefore = h.readPlanFile("log.md");
+
+    await h.runCommand("reins-activate");
+
+    // No dialog was shown and nothing was auto-approved.
+    expect(h.ui.dialogs).toEqual([]);
+    // One clear refusal: the attach report plus the fail-closed error.
+    expect(h.ui.notifies).toHaveLength(2);
+    expect(h.ui.notifies[1].type).toBe("error");
+    expect(h.ui.notifies[1].message).toContain("interactive UI");
+    // Nothing durable changed and nothing was rendered.
+    expect(h.readPlanFile("plan.md")).toBe(planBefore);
+    expect(h.readPlanFile("log.md")).toBe(logBefore);
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "attached" } },
+    ]);
+    expect(h.ui.widgets).toEqual([]);
+  });
+});
+
 describe("reins-activate refusals", () => {
   test("activating with nothing attached is refused", async () => {
     const h = makeHarness({ now: FIXED_NOW });
