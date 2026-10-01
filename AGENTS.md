@@ -14,9 +14,9 @@ specs. Read both before touching the design.
 
 Two vocabularies live side by side here; do not confuse them:
 
-1. The **workflow vocabulary** (map, task, slice, frontier): how work on
-   *this repo* is planned and executed, under `docs/tasks/`. Defined by
-   the task-workflow package.
+1. The **workflow vocabulary** (map, effort, task, ticket, frontier):
+   how work on *this repo* is planned and executed, under
+   `docs/tasks/`. Defined by the task-workflow package.
 2. The **product vocabulary** (execution contract, plan directory, task
    status, proposal/review gate, steering): what pi-reins itself *is*.
    Defined in `CONTEXT.md` and the two plan documents.
@@ -28,12 +28,14 @@ spell out which.
 
 ## Task-workflow layout
 
-- `docs/tasks/` holds the work graph: `map.md` files (multi-task plans)
-  and `<slug>/task.md` files (executable tasks with `blocked_by`
-  edges). `docs/tasks/state.yaml` tracks the current task/slice and the
-  `schema_version` stamp.
-- `docs/tasks/archive/` and `docs/tasks/maps/archive/` hold completed
-  work. `docs/tasks/out-of-scope/` is the rejected-requests KB: one
+- `docs/tasks/` holds the work graph, grouped by effort:
+  `docs/tasks/<effort>/` carries `map.md`, `spec.md`, decision tasks
+  under `tasks/<slug>/task.md`, and implementation tickets under
+  `tickets/<slug>/ticket.md` (with `blocked_by` edges between them).
+  `docs/tasks/state.yaml` tracks the current map and task pointers plus
+  the `schema_version` stamp.
+- `docs/tasks/archive/` holds completed work, grouped the same way.
+  `docs/tasks/out-of-scope/` is the rejected-requests KB: one
   file per consciously ruled-out request, with the reason.
 - `docs/bugs/` holds incoming bug reports awaiting triage.
 - `docs/adr/` holds architecture decision records (first one: the
@@ -43,14 +45,14 @@ spell out which.
 
 ## Working the graph
 
-- Read `docs/tasks/state.yaml` (`task_state`) to see where work stands.
-  `task_list`, `task_frontier` (maps), and `task_slices` (legacy tasks)
-  answer what is ready.
-- Task `type` drives execution: `research` and `prototype` tasks
+- Read `docs/tasks/state.yaml` (the `map` and `task` pointers) to see
+  where work stands. `task_list` and `task_frontier` answer what is ready.
+- Task `subtype` drives execution: `research` and `prototype` tasks
   delegate to the `research` and `prototype` skills; `grilling` and
-  `manual` run inline; `feature` and `bug` tasks are implemented through
-  the TDD loop (`tdd` skill), one red-green slice at a time.
-- `/skill:implement-task` implements a task's slices; `/skill:finalize-task`
+  `manual` run inline; `feature` and `bug` tickets are implemented
+  through the TDD loop (`tdd` skill), one ticket at a time.
+- `/skill:implement-task` implements an effort's pending tickets;
+  `/skill:finalize-task`
   runs the closing pipeline (test gate, changelog, archive, merge).
 - `/skill:code-review` reviews every diff on two axes (Standards + Spec)
   before landing.

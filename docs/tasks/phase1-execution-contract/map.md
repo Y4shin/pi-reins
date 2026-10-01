@@ -1,24 +1,15 @@
 ---
-kind: map
-slug: phase1-execution-contract
 title: Phase 1 decisions for the pi-reins execution contract
-status: active
-tasks:
-  - research-okf-compliance
-  - grill-okf-compliance
-  - research-pi-enforcement-surface
-  - grill-enforcement-and-context-strategy
-  - grill-material-deviation-boundary
-  - grill-replanning-state-machine
-  - prototype-steering-injection
+status: stable
+type: map
 ---
 
 ## Destination
 
 The Phase 1 MVP of pi-reins, as specified in
-[docs/plans/plan.md](../../../plans/plan.md) (both Phase 1 sections)
+[docs/plans/plan.md](../../plans/plan.md) (both Phase 1 sections)
 against the durable format in
-[plan-fs-contract.md](../../../plans/plan-fs-contract.md): the
+[plan-fs-contract.md](../../plans/plan-fs-contract.md): the
 decisions needed so that `to-spec` can collapse this map into a buildable
 Phase 1 spec with nothing left to decide.
 

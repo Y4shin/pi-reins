@@ -23,9 +23,7 @@
 - **YAML gotcha:** an unquoted `: ` inside a frontmatter value (e.g. a
   title containing `type: bug`) makes the YAML invalid; the task tools
   then *silently skip* the file. Quote such values.
-- **Frontmatter keys:** the task tools read `kind`, `slug`, `title`,
-  `type`, `map`, `blocked_by`, `status`, `size`, `started_at`,
-  `completed_at` (tasks); `kind`, `slug`, `title`, `task`, `mode`,
-  `status`, `size`, `blocked_by` (legacy slices); `kind`, `slug`, `title`,
-  `tasks`, `status`, `started_at`, `completed_at` (maps). Malformed
-  frontmatter makes an artifact invisible to the graph tools.
+- **Frontmatter keys:** the task tools read `type`, `subtype`, `title`,
+  `status`, `workflow_state`, `blocked_by` (tasks and tickets); `type`,
+  `title`, `status` (maps and specs). Malformed frontmatter makes an
+  artifact invisible to the graph tools.

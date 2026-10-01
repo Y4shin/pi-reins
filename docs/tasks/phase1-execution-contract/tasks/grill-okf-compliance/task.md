@@ -1,18 +1,17 @@
 ---
-kind: task
-type: grilling
-slug: grill-okf-compliance
+type: task
 title: Settle the OKF 0.2 compliance decisions and reconcile the fs-contract
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by:
 - research-okf-compliance
+subtype: grilling
+workflow_state: done
 ---
 
 ## Decision to settle
 
 How the execution-plan filesystem format in
-[docs/plans/plan-fs-contract.md](../../../docs/plans/plan-fs-contract.md)
+[docs/plans/plan-fs-contract.md](../../../../plans/plan-fs-contract.md)
 reconciles with upstream OKF 0.2: for every gap or extension-candidate the
 research audit surfaced, decide whether to keep it as a documented OKF
 extension or close it, and apply the settled decisions to the fs-contract

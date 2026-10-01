@@ -1,3 +1,8 @@
+---
+type: out-of-scope note
+title: "Enforcement and Context Strategy: Surface Briefing"
+status: stable
+---
 # Enforcement and Context Strategy: Surface Briefing
 
 Decision briefing for `grill-enforcement-and-context-strategy` (plan.md

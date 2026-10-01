@@ -1,11 +1,10 @@
 ---
-kind: task
-type: prototype
-slug: prototype-steering-injection
+type: task
 title: Prototype the steering summary injection and pushback channels
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by: []
+subtype: prototype
+workflow_state: done
 ---
 
 ## The precise question

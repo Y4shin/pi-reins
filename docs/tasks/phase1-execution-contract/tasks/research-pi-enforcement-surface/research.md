@@ -1,3 +1,8 @@
+---
+type: out-of-scope note
+title: "Research: Pi's enforcement and interaction surface for pi-reins"
+status: stable
+---
 # Research: Pi's enforcement and interaction surface for pi-reins
 
 Task: `research-pi-enforcement-surface`. Date: 2026-09-29. This document

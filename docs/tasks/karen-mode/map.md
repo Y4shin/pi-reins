@@ -1,9 +1,7 @@
 ---
-kind: map
-slug: karen-mode
 title: Permission gates, Karen mode (post-v1 feature idea)
 status: draft
-tasks: []
+type: map
 ---
 
 ## What this map is

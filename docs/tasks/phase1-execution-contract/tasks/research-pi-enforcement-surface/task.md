@@ -1,11 +1,10 @@
 ---
-kind: task
-type: research
-slug: research-pi-enforcement-surface
+type: task
 title: Map Pi's actual enforcement and interaction capabilities
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by: []
+subtype: research
+workflow_state: done
 ---
 
 ## The precise question

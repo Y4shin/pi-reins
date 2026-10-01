@@ -1,12 +1,11 @@
 ---
-kind: task
-type: grilling
-slug: grill-enforcement-and-context-strategy
+type: task
 title: Choose the Phase 1 enforcement and context strategy in Pi
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by:
 - research-pi-enforcement-surface
+subtype: grilling
+workflow_state: done
 ---
 
 ## Decision to settle

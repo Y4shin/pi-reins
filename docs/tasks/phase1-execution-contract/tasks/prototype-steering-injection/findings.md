@@ -1,3 +1,8 @@
+---
+type: findings
+title: "Findings: prototype-steering-injection"
+status: stable
+---
 # Findings: prototype-steering-injection
 
 Date: 2026-09-29. Task: `prototype-steering-injection` (type: prototype,

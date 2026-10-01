@@ -1,3 +1,8 @@
+---
+type: out-of-scope note
+title: "Research: OKF 0.2 compliance audit of the execution-plan directory format"
+status: stable
+---
 # Research: OKF 0.2 compliance audit of the execution-plan directory format
 
 Task: `research-okf-compliance`. Date: 2026-09-29. This document is the

@@ -1,9 +1,7 @@
 ---
-kind: map
-slug: subagent-plan-integration
 title: Tighter pi-subagents integration for plan execution (post-v1 feature idea)
 status: draft
-tasks: []
+type: map
 ---
 
 ## What this map is

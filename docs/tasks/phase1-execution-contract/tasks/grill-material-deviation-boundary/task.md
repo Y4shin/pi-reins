@@ -1,11 +1,10 @@
 ---
-kind: task
-type: grilling
-slug: grill-material-deviation-boundary
+type: task
 title: Define the material deviation boundary with practical examples
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by: []
+subtype: grilling
+workflow_state: done
 ---
 
 ## Decision to settle

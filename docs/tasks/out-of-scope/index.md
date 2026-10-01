@@ -1,3 +1,8 @@
+---
+type: out-of-scope note
+title: out-of-scope
+status: stable
+---
 # docs/tasks/out-of-scope/
 
 A rejected-requests knowledge base. Each file documents one request that

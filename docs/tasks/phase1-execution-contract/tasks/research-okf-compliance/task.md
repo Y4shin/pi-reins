@@ -1,17 +1,16 @@
 ---
-kind: task
-type: research
-slug: research-okf-compliance
+type: task
 title: Verify the execution-plan format against upstream OKF 0.2
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by: []
+subtype: research
+workflow_state: done
 ---
 
 ## The precise question
 
 Does the execution-plan directory format defined in
-[docs/plans/plan-fs-contract.md](../../../docs/plans/plan-fs-contract.md)
+[docs/plans/plan-fs-contract.md](../../../../plans/plan-fs-contract.md)
 conform to the upstream Open Knowledge Format v0.2 specification, and where
 it does not, which deviations are conformant extensions and which are
 genuine compliance gaps?

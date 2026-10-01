@@ -1,9 +1,7 @@
 ---
-kind: map
-slug: agent-dashboard
 title: TUI dashboard for cross-agent plan execution state (post-v1 feature idea)
 status: draft
-tasks: []
+type: map
 ---
 
 ## What this map is

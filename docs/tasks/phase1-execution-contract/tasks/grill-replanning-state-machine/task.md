@@ -1,12 +1,11 @@
 ---
-kind: task
-type: grilling
-slug: grill-replanning-state-machine
+type: task
 title: Design the two-gate replanning state machine
-map: phase1-execution-contract
-status: done
+status: deprecated
 blocked_by:
 - grill-material-deviation-boundary
+subtype: grilling
+workflow_state: done
 ---
 
 ## Decision to settle

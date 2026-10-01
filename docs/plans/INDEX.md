@@ -17,7 +17,7 @@ on.
 These documents are not historical records of planning; they are
 living, binding specs. Until the package is complete, they must be
 kept in sync with any decision that alters them, as recorded in
-Wayfinder maps under `docs/tasks/maps/`, so that they remain a
+Wayfinder maps under `docs/tasks/`, so that they remain a
 somewhat reliable source of truth for the package's design.
 
 Derived state is never persisted, neither here nor in a plan directory
