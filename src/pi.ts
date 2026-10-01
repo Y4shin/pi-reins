@@ -18,7 +18,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { attach } from "./handlers/attach.js";
 import { activate } from "./handlers/activate.js";
 import { createContextHandler } from "./handlers/context.js";
-import { defaultConfig } from "./config.js";
+import { CADENCE_FLAG, CADENCE_FLAG_DEFAULT, resolveConfig } from "./config.js";
 import type {
   ReinsDeps,
   ReinsUi,
@@ -50,6 +50,13 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   const createDeps = wiring.createDeps ?? ((ctx, options) =>
     createRealDeps(ctx, pi, options, steeringEngine.port));
   let state: ReinsState = freshState();
+
+  // The steering cadence is user-tunable per session (default 4).
+  pi.registerFlag(CADENCE_FLAG, {
+    description: "Inject the steering summary every Nth LLM call",
+    type: "string",
+    default: CADENCE_FLAG_DEFAULT,
+  });
 
   pi.on("session_start", async (event, ctx) => {
     state = onSessionStart(createDeps(ctx), event as SessionStartEvent);
@@ -138,7 +145,7 @@ function createRealDeps(
     // repository when one exists (the fs-contract's rule); commands
     // root the port at the plan directory, so prefer that root here.
     actor: resolveActor(options?.fsRoot ?? ctx.cwd),
-    config: defaultConfig(),
+    config: resolveConfig((name) => pi.getFlag(name)),
     session: {
       appendEntry: (customType, data) => {
         pi.appendEntry(customType, data);

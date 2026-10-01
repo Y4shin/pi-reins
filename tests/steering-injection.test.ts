@@ -187,6 +187,37 @@ describe("summary content", () => {
   });
 });
 
+describe("cadence configuration and persistence", () => {
+  test("the cadence is configurable", async () => {
+    const h = await executingHarness({ cadence: 2 });
+
+    const calls = [];
+    for (let i = 0; i < 4; i++) calls.push(await callLlm(h));
+
+    expect(calls.map((c) => c.injected)).toEqual([
+      true, true, // first call of the run, then cadence 2
+      false, true,
+    ]);
+  });
+
+  test("repeated injections never accumulate in the session or the plan directory", async () => {
+    const h = await executingHarness();
+    const filesBefore = h.planFiles().join("\n");
+
+    for (const expected of [true, false, false, true, false]) {
+      const call = await callLlm(h);
+      // Each injected call appends exactly one steering message to a
+      // fresh outgoing list; nothing carries over between calls.
+      expect(call.injected).toBe(expected);
+    }
+
+    // No steering entry ever reaches the private session, and the plan
+    // directory is untouched by injection.
+    expect(h.session.entries.map((e) => e.customType)).not.toContain("reins-steering");
+    expect(h.planFiles().join("\n")).toBe(filesBefore);
+  });
+});
+
 describe("without an active contract", () => {
   test("a detached session returns the outgoing message list untouched", async () => {
     const h = makeHarness({});
