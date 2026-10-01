@@ -52,6 +52,10 @@ describe("reins_task_start", () => {
 
     const task = frontmatterOf(h.readPlanFile("100-inspect-current-system.md"));
     expect(task.executionStatus).toBe("in_progress");
+    // Every plugin write stamps the OKF generated family.
+    const generated = task.generated as { by: string; at: string };
+    expect(generated.by).toMatch(/^pi-reins\//);
+    expect(generated.at).toBe("2026-10-01T12:00:00.000Z");
   });
 
   test("refuses a task that is already in_progress, done, or unknown", async () => {
