@@ -36,7 +36,26 @@ function checkParseFindings(scan: PlanScan): Violation[] {
   return scan.findings.map((finding) => ({ ...finding }));
 }
 
-const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [checkParseFindings];
+/**
+ * OKF index structure (upstream §8): the root index.md carries no
+ * frontmatter except the okf_version declaration and no schema fields.
+ */
+function checkIndexStructure(scan: PlanScan): Violation[] {
+  if (!scan.index) return [];
+  const extra = Object.keys(scan.index.frontmatter).filter((key) => key !== "okf_version");
+  if (extra.length === 0) return [];
+  return [
+    {
+      file: scan.index.file,
+      rule: "index-frontmatter-keys",
+      message:
+        "index.md carries no frontmatter except the okf_version declaration " +
+        `(found: ${extra.join(", ")})`,
+    },
+  ];
+}
+
+const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [checkParseFindings, checkIndexStructure];
 
 /** Validate a scan against the full execution-plan contract. */
 export function validatePlan(scan: PlanScan): Violation[] {
