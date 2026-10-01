@@ -164,6 +164,19 @@ describe("reins_propose_change: malformed proposals are refused at recording tim
     expect(h.planFiles().filter((f) => f.startsWith("proposals/"))).toHaveLength(1);
   });
 
+  test("refuses a proposal id that would escape the proposals directory", async () => {
+    const h = await executingHarness();
+    const filesBefore = h.planFiles();
+
+    for (const id of ["../escape", "sub/inner", ".."]) {
+      const outcome = await h.dispatchTool("reins_propose_change", { ...ADD_PARAMS, id });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.message).toContain("proposals/");
+    }
+    // Nothing was written anywhere: the file set is unchanged.
+    expect(h.planFiles()).toEqual(filesBefore);
+  });
+
   test("writes optional dependency hints and a generated id when kind add omits one", async () => {
     const h = await executingHarness();
 

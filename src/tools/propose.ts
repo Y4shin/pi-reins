@@ -144,8 +144,9 @@ function existingProposalIds(deps: ReinsDeps): Set<string> {
 
 /**
  * Resolve the new proposal's id: a caller-provided id is refused when
- * it already exists or would sit on a reserved filename; a generated
- * id is deduplicated with a numeric suffix instead.
+ * it already exists, would sit on a reserved filename, or would not
+ * land flat inside proposals/; a generated id is deduplicated with a
+ * numeric suffix instead.
  */
 function resolveProposalId(providedId: string | undefined, base: string, existing: Set<string>): string {
   if (providedId !== undefined) {
@@ -158,6 +159,12 @@ function resolveProposalId(providedId: string | undefined, base: string, existin
       throw new Error(
         `reins_propose_change: the proposal id "${providedId}" collides with a reserved filename ` +
           "(index.md and log.md are reserved at every level).",
+      );
+    }
+    if (!/^[^/\\]+$/.test(providedId) || providedId === "." || providedId === "..") {
+      throw new Error(
+        `reins_propose_change: the proposal id "${providedId}" must be a single name; ` +
+          "the document is written to proposals/<id>.md.",
       );
     }
     return providedId;
