@@ -26,6 +26,18 @@ afterEach(() => {
 });
 
 describe("reins-attach", () => {
+  test("attaching a plan whose executionStatus is already active enters executing", async () => {
+    const h = makeHarness({ planDir: "plan-active" });
+
+    await h.runCommand("reins-attach", "plan");
+
+    expect(h.ui.notifies).toHaveLength(1);
+    expect(h.ui.notifies[0].type).toBe("info");
+    expect(h.session.entries).toEqual([
+      { customType: "reins-attached", data: { planDir: h.planDir, phase: "executing" } },
+    ]);
+  });
+
   test("a conforming plan attaches cleanly", async () => {
     const h = makeHarness({ planDir: "plan-valid" });
     const before = h.planFiles().join("\n");
