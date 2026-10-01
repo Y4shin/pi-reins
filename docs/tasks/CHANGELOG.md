@@ -4,6 +4,25 @@ title: Task Changelog
 ---
 # Task Changelog
 
+## 2026-10-01, Renegotiation triggers and the batched proposal session (renegotiation-session)
+The renegotiation gate opens over the entire pending proposal set on
+four triggers (current-work bearing on an in_progress task, task-start
+entanglement, exhaustion of eligible agreed work, initiative via
+`reins_renegotiate` tool and `/reins-renegotiate` command); the session
+terminates the run at the gate with the current task left in_progress,
+presents every pending proposal (deferred included, draft content for
+additions) one blocking approve/defer/reject dialog each, and applies
+dispositions durably (deferred markers, rejected deletions), entering
+plan-editing on any approval or back to executing otherwise; dialogs
+fail closed without UI and gate state renders on the widget. Landed
+`shouldOpenSession`/`openRenegotiationSession` in
+`src/handlers/renegotiate.ts`, the snapshot half of
+`src/plan/fingerprint.ts` (`PlanSnapshot`, `snapshotPlanDir`),
+`FsPort.delete`, required `setState` on the tool IOs, the `terminate`
+run-termination hint, and `reins-gate-open`/`reins-gate-closed` session
+entries for ticket 11's crash recovery. Gate: typecheck clean, 134/134
+tests.
+
 ## 2026-10-01, Steering summary injection with cadence and forced triggers (steering-injection)
 The steering engine injects the measured summary variant (invariant
 header, goal, counts, active work, blocked, gate, latest progress,
