@@ -86,7 +86,8 @@ export async function taskStart(
   setState: (state: ReinsState) => void,
 ): Promise<TaskToolResult> {
   const planDir = requireActiveContract(state, "reins_task_start");
-  const initial = findTask(discoverPlanDir(deps.fs, planDir), params, "reins_task_start");
+  const scan = discoverPlanDir(deps.fs, planDir);
+  const initial = findTask(scan, params, "reins_task_start");
   const id = String(initial.frontmatter.id);
   const status = initial.frontmatter.executionStatus;
   if (status === "in_progress") {
@@ -99,7 +100,7 @@ export async function taskStart(
   // non-deferred proposal bears on opens the gate first. The start is
   // not applied; the model retries once the contract is active again.
   const cause: SessionCause = { kind: "task-start", taskId: id };
-  if (shouldOpenSession(state, discoverPlanDir(deps.fs, planDir), cause)) {
+  if (shouldOpenSession(state, scan, cause)) {
     const outcome = await openRenegotiationSession(deps, state, cause);
     setState(outcome.state);
     return {

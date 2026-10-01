@@ -70,14 +70,14 @@ export function shouldOpenSession(state: ReinsState, scan: PlanScan, cause: Sess
       });
     }
     case "exhaustion": {
-      // Eligible agreed work is exhausted when nothing can be taken up:
-      // no pending or blocked task (startable), and none in flight. An
-      // in_progress task is current work, not exhausted work.
-      const startable = scan.tasks.some((task) => {
+      // Eligible agreed work is exhausted when nothing is left to take
+      // up: no pending or blocked task (startable) and none in flight
+      // (an in_progress task is current work, not exhausted work).
+      const openWork = scan.tasks.some((task) => {
         const status = task.frontmatter.executionStatus;
         return status === "pending" || status === "blocked" || status === "in_progress";
       });
-      return !startable && store.pending().some(triggering);
+      return !openWork && store.pending().some(triggering);
     }
   }
 }
