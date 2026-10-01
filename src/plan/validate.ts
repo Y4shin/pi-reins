@@ -16,7 +16,7 @@
  */
 
 import type { PlanScan } from "./discover.js";
-import type { BindingSections } from "./parse.js";
+import type { BindingSections, ProposalDocument, ProposalDraftTask } from "./parse.js";
 
 /** One violated rule, located by plan-relative file path. */
 export interface Violation {
@@ -253,6 +253,115 @@ function checkLogStructure(scan: PlanScan): Violation[] {
   return violations;
 }
 
+/** The closed proposal kind vocabulary, per the fs-contract. */
+const PROPOSAL_KINDS = ["add", "modify", "remove"];
+
+/** The three binding sections a draft task must carry. */
+const DRAFT_SECTIONS: ReadonlyArray<[keyof ProposalDraftTask, string]> = [
+  ["description", "Description"],
+  ["acceptanceCriteria", "Acceptance Criteria"],
+  ["constraints", "Constraints"],
+];
+
+/**
+ * Proposal well-formedness, per the fs-contract's Change Proposals
+ * section: a stable id, a kind from the closed vocabulary, a target
+ * that resolves to a task of the plan for modify and remove, the draft
+ * task content for additions, a rationale in the body, and dependency
+ * hints that are lists of ids when present.
+ */
+function checkProposals(scan: PlanScan): Violation[] {
+  const violations: Violation[] = [];
+  const taskIds = new Set(
+    scan.tasks.map((task) => task.frontmatter.id).filter((id): id is string => typeof id === "string"),
+  );
+  for (const proposal of scan.proposals) {
+    violations.push(...checkProposal(proposal, taskIds));
+  }
+  return violations;
+}
+
+function checkProposal(proposal: ProposalDocument, taskIds: Set<string>): Violation[] {
+  const violations: Violation[] = [];
+  const id = proposal.frontmatter.id;
+  if (typeof id !== "string" || id.trim() === "") {
+    violations.push({
+      file: proposal.file,
+      rule: "proposal-id",
+      message: "proposal documents must declare a non-empty id",
+    });
+  }
+
+  const kind = proposal.frontmatter.kind;
+  if (typeof kind !== "string" || !PROPOSAL_KINDS.includes(kind)) {
+    violations.push({
+      file: proposal.file,
+      rule: "proposal-kind",
+      message: `proposal kind must be one of ${PROPOSAL_KINDS.join(", ")} (${describeValue(kind)})`,
+    });
+    return violations;
+  }
+
+  if (kind === "modify" || kind === "remove") {
+    const target = proposal.frontmatter.target;
+    if (typeof target !== "string" || target.trim() === "") {
+      violations.push({
+        file: proposal.file,
+        rule: "proposal-target",
+        message: `a ${kind} proposal must name the target task's id`,
+      });
+    } else if (!taskIds.has(target)) {
+      violations.push({
+        file: proposal.file,
+        rule: "proposal-target",
+        message:
+          `the ${kind} proposal targets "${target}", which is no task of this plan ` +
+          `(known ids: ${[...taskIds].join(", ") || "none"})`,
+      });
+    }
+  }
+
+  if (kind === "add") {
+    const missing: string[] = [];
+    const task = proposal.draft.task;
+    if (typeof task?.id !== "string" || task.id.trim() === "") missing.push("proposed id");
+    if (typeof task?.title !== "string" || task.title.trim() === "") missing.push("title");
+    for (const [key, name] of DRAFT_SECTIONS) {
+      const section = task?.[key];
+      if (typeof section !== "string" || section.trim() === "") missing.push(name);
+    }
+    if (missing.length > 0) {
+      violations.push({
+        file: proposal.file,
+        rule: "proposal-draft",
+        message: `an add proposal must carry the draft task content: ${missing.join(", ")}`,
+      });
+    }
+  }
+
+  const rationale = proposal.draft.rationale;
+  if (typeof rationale !== "string" || rationale.trim() === "") {
+    violations.push({
+      file: proposal.file,
+      rule: "proposal-rationale",
+      message: "proposal body must carry a Rationale section",
+    });
+  }
+
+  for (const hint of ["dependsOn", "enables"] as const) {
+    const value = proposal.frontmatter[hint];
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+      violations.push({
+        file: proposal.file,
+        rule: "proposal-dependencies",
+        message: `${hint} must be a list of task or proposal ids when given (got: ${JSON.stringify(value)})`,
+      });
+    }
+  }
+  return violations;
+}
+
 const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkParseFindings,
   checkIndexStructure,
@@ -261,6 +370,7 @@ const RULE_CHECKS: Array<(scan: PlanScan) => Violation[]> = [
   checkStatusVocabularies,
   checkIdUniqueness,
   checkLogStructure,
+  checkProposals,
 ];
 
 /** Validate a scan against the full execution-plan contract. */

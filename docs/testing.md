@@ -70,6 +70,10 @@ or exact strings beyond the steering summary's required content lines.
   in separate files, plus `malformed-multi/` carrying defects from
   several classes for report-completeness; add one per new validation
   rule class rather than inventing inline strings.
+- **Fixture mutation**: `writeFixtureFile`
+  (`tests/harness/fixtures.ts`) adds extra documents to a copied
+  fixture directory when a test needs plan content beyond the
+  fixture family.
 
 ## Skill prose testing
 
