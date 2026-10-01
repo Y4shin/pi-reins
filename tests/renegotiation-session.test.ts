@@ -394,6 +394,31 @@ describe("reins_renegotiate: the initiative gate", () => {
     expect(rendered).not.toContain("Proposals:");
   });
 
+  test("a dismissed dialog abandons the session mid-sweep without applying anything", async () => {
+    const h = makeHarness({
+      planDir: "plan-active",
+      now: FIXED_NOW,
+      uiScript: {
+        select: (title) => (title.includes("cp-add-cli-migration") ? "Defer" : undefined),
+      },
+    });
+    await h.runCommand("reins-attach", "plan");
+    h.writePlanFile("proposals/cp-modify-verify.md", MODIFY_VERIFY_PROPOSAL);
+    const modifyBefore = h.readPlanFile("proposals/cp-modify-verify.md");
+
+    const outcome = await h.dispatchTool("reins_renegotiate");
+
+    expect(outcome.isError).toBe(false);
+    // Nothing durable: no deferred marker, no deletion, no rejection.
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).not.toContain("deferred");
+    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toBe(modifyBefore);
+    // The gate still opened: the run terminates even on abandonment.
+    expect(terminateOf(outcome)).toBe(true);
+    expect(outcome.message).toContain("abandoned");
+    const rendered = (h.ui.widgets[h.ui.widgets.length - 1].lines ?? []).join("\n");
+    expect(rendered).toContain("Gate: executing");
+  });
+
   test("the session terminates the run at the gate and the current task stays in_progress", async () => {
     const h = makeHarness({
       planDir: "plan-active",
