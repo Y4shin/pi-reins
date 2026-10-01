@@ -1,0 +1,33 @@
+{
+  "name": "pi-reins",
+  "version": "0.1.0",
+  "description": "Pi plugin for execution alignment: binds an externally produced plan into an enforceable execution contract.",
+  "keywords": [
+    "pi-package"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "pi-subagents": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/pi.ts"
+    ]
+  }
+}
