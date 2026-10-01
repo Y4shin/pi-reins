@@ -497,6 +497,43 @@ no planned API surface broke a dependent):
   repository, the `human:` prefix) passes to activation, per the
   scaffold note.
 
+## After activation (level 1)
+
+The landed surface for later tickets to consume (deviation report:
+no planned API surface broke a dependent):
+
+- `renderWidget(deps, state, scan)` in `src/ui/widget.ts` takes the
+deps port first (the spec's contract text named
+`renderWidget(state, scan)`); `setWidget` is reached through the UI
+port, so task-lifecycle, renegotiation-session, and
+plan-editing-review call it deps-first.
+- `requireUi(deps, action): string | null` in `src/ui/dialogs.ts` is
+the fail-closed shape every later gate inherits: null when an
+interactive UI exists, otherwise one error notification and the
+refusal report returned verbatim to the caller.
+- `activate(deps, state)` lives in `src/handlers/activate.ts` (beyond
+the layout's handlers/ list, like handlers/attach.ts) and returns
+`{ state, result: ActivateResult { ok, phase?, report } }`.
+- `src/plan/write.ts` exports the acceptance write utilities
+plan-editing-review reuses for Update and Completion records:
+`LOG_FILE`, `prependLogEntry` (newest-first under ISO date headings,
+new date group above existing ones), `logHasEntry`, and
+`appendVerifiedEvent` (appends `{ by: "human:<actor>", at }` with
+bare-mapping normalization per OKF 0.2 5.2; the `human:` prefix is
+applied at the write).
+- `deps.actor` resolution is settled: `resolveActor(options?.fsRoot ??
+  ctx.cwd)` reads the plan directory's repository (git email, else OS
+  username, else "unknown"), closing the attach-validation pass-down.
+- The harness accepts `hasUI` on `createHarness`/`createUiStub` so
+gates exercise their no-UI degradation at the UI-port seam.
+- Activation deliberately does not re-run `validatePlan` between
+attach and activate: the only plan-level refusal is an unreadable
+plan document; contract drift belongs to out-of-band-detection
+(ticket 8).
+- Residual: the verified event and the Activation log entry are
+adjacent writes in one call sequence; a crash between them stays
+divergent until out-of-band-detection lands.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is
