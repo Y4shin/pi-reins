@@ -464,6 +464,39 @@ no planned API surface broke a dependent):
 - `src/handlers/session.ts` and `src/plan/fs.ts` exist in the shared
   layout beyond the scaffold ticket's export list.
 
+## After attach-validation (level 1)
+
+The landed surface for later tickets to consume (deviation report:
+no planned API surface broke a dependent):
+
+- `attach()` lives in `src/handlers/attach.ts` (beyond the layout's
+  handlers/ list) and returns `AttachResult { ok, planDir, phase,
+  violations, report }`. `ReinsWiring.createDeps` takes an optional
+  `ReinsDepsOptions { fsRoot }` and the `/reins-attach <path>` command
+  roots the fs port at the plan directory, settling the scaffold note
+  about who owns the plan path; the harness honors the option.
+- Rule modules are per-class functions in `validate.ts` composed via
+  the private `RULE_CHECKS` array, the extension point the
+  change-proposals ticket adds proposal rules to. Reserved-filename
+  rules (`reserved-filename-role`, nested Execution Plan documents)
+  and `unknown-task-subheading` surface as discovery/parse findings
+  aggregated by `validatePlan`; `PlanScan` is unchanged.
+- The private session entry on attach is `reins-attached` with
+  `{ planDir, phase }`.
+- Session-start crash-resume is command-based re-attach only (fresh
+  state at every session_start), per decision 1 below; `ReinsDeps`
+  still has no session-entry read port. The leftover-gate reconcile
+  machinery lands with plan-editing-review (ticket 11). The split is
+  deliberate, confirmed here rather than left as an omission.
+- Residual validation gaps accepted with the landing: log
+  newest-first ordering, `schemaVersion` value pinning, and log-entry
+  placement before the first date heading.
+- Known blemish for the effort's coherence pass: `discover.ts` line 12
+  merges two imports onto one line.
+- `deps.actor` resolution (plan directories outside the cwd
+  repository, the `human:` prefix) passes to activation, per the
+  scaffold note.
+
 # Decisions taken in this spec (flagged for review)
 
 1. Attach and activate are two user commands; the plan path is
