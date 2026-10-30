@@ -25,7 +25,8 @@
  * engine consumes to force the next injection.
  */
 
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 
 import {
   withFileMutationQueue,
@@ -39,7 +40,7 @@ import { discoverPlanDir, type PlanScan } from "../plan/discover.js";
 import type { ProposalDocument, TaskDocument } from "../plan/parse.js";
 import { proposalStore } from "../plan/proposals.js";
 import { LOG_FILE, prependLogEntry, writeFields } from "../plan/write.js";
-import { transition, type ReinsState } from "../state.js";
+import { transition, type CompletionFold, type ReinsState } from "../state.js";
 import { requireUi } from "../ui/dialogs.js";
 import { renderWidget } from "../ui/widget.js";
 import { contractStatus, requireActiveContract, type TaskToolResult } from "./task.js";
@@ -105,10 +106,19 @@ export async function planComplete(
   }
 
   // The walkthrough: every deferred proposal ends folded or dropped
-  // before the plan can complete. Drops are immediate; outstanding
-  // folds force the next attempt (their verification is structural).
-  const walkthroughRefusal = await runDeferredWalkthrough(deps, planDir);
-  if (walkthroughRefusal !== undefined) throw new Error(walkthroughRefusal);
+  // before the plan can complete. Drops are immediate; folds are
+  // verified structurally against their designated targets, outstanding
+  // ones forcing the next attempt with the fold instruction.
+  const walkthrough = await runDeferredWalkthrough(deps, state, planDir);
+  const current = {
+    ...attempting,
+    completionFolds: walkthrough.folds.length > 0 ? walkthrough.folds : undefined,
+  };
+  setState(current);
+  if (walkthrough.refusal !== undefined) throw new Error(walkthrough.refusal);
+  if (walkthrough.folds.length > 0) {
+    throw new Error(foldInstructions(walkthrough.folds, discoverPlanDir(deps.fs, planDir)));
+  }
 
   // The fresh-context verifier judges the durable records. Its gap
   // list is the refusal; its fulfillment is the completion's evidence.
@@ -131,7 +141,7 @@ export async function planComplete(
     // Fresh reads inside the queue; the records are one write step.
     writeFields(deps, "plan.md", { executionStatus: "completed" });
     prependLogEntry(deps, "Completion", `Plan completed: ${goalText}.`);
-    const completed = transition(attempting, "completed");
+    const completed = transition(current, "completed");
     setState(completed);
     renderWidget(deps, completed, discoverPlanDir(deps.fs, planDir));
     deps.ui.notify(report, "info");
@@ -146,41 +156,143 @@ function proposalIdOf(proposal: ProposalDocument): string {
   return String(proposal.frontmatter.id ?? proposal.file);
 }
 
+/** What the walkthrough left behind: a refusal (if the plan cannot complete yet) and the outstanding folds. */
+interface WalkthroughResult {
+  /** Present when the walkthrough aborted or the plan cannot complete. */
+  refusal?: string;
+  /** The folds whose designated target has not verified yet. */
+  folds: CompletionFold[];
+}
+
+/** The fold dialog's target input asks for a durable location. */
+const FOLD_TARGET_TITLE = "durable target location";
+const FOLD_TARGET_PLACEHOLDER =
+  "Durable location to fold this proposal's content into (outside the plan directory)";
+
+function foldTargetTitle(proposal: ProposalDocument): string {
+  return `Fold proposal ${proposalIdOf(proposal)}: ${FOLD_TARGET_TITLE}`;
+}
+
+/** Whether the designated target would write inside the plan directory (legal only through the plugin). */
+function isInsidePlanDir(target: string, planDir: string): boolean {
+  const resolvedTarget = resolve(target);
+  const resolvedPlan = resolve(planDir);
+  return resolvedTarget === resolvedPlan || resolvedTarget.startsWith(resolvedPlan + sep);
+}
+
+/** Delete a proposal document as one mutation-queued step. */
+async function deleteProposal(deps: ReinsDeps, planDir: string, file: string): Promise<void> {
+  await withFileMutationQueue(join(planDir, file), async () => {
+    if (deps.fs.exists(file)) deps.fs.delete(file);
+  });
+}
+
 /**
- * Walk every deferred proposal through one blocking fold-or-drop
- * dialog with the user. A drop deletes the proposal document
- * immediately. Without an answer the walkthrough aborts fail-closed:
- * the drops so far stand, the plan cannot complete, and nothing else
- * changes durably.
- *
- * Returns the refusal when the plan cannot complete yet, undefined
- * when the walkthrough is clear.
+ * The walkthrough: verify the outstanding folds structurally, then
+ * walk every still-deferred proposal through one blocking fold-or-drop
+ * dialog with the user. A verified fold (the designated target exists)
+ * dispositions the proposal for good and deletes its document; a drop
+ * deletes the proposal document immediately; a newly designated fold
+ * records its target for the next attempt. Without an answer the
+ * walkthrough aborts fail-closed: the drops so far stand, previously
+ * designated folds stay recorded, and the plan cannot complete.
  */
-async function runDeferredWalkthrough(deps: ReinsDeps, planDir: string): Promise<string | undefined> {
+async function runDeferredWalkthrough(
+  deps: ReinsDeps,
+  state: ReinsState,
+  planDir: string,
+): Promise<WalkthroughResult> {
+  // Outstanding folds verify structurally, on this attempt: the fold
+  // disposition completes when the designated target exists, and the
+  // proposal document is deleted then.
+  const folds: CompletionFold[] = [];
+  for (const fold of state.completionFolds ?? []) {
+    const scan = discoverPlanDir(deps.fs, planDir);
+    const proposal = scan.proposals.find(
+      (candidate) => candidate.file === fold.file || proposalIdOf(candidate) === fold.proposalId,
+    );
+    if (proposal === undefined) continue; // gone from the plan directory: nothing to verify
+    if (existsSync(fold.target)) {
+      await deleteProposal(deps, planDir, proposal.file);
+      continue;
+    }
+    folds.push(fold);
+  }
+
+  // Still-deferred proposals (unverified folds included) walk through
+  // the fold-or-drop dialog.
   const deferred = proposalStore(discoverPlanDir(deps.fs, planDir)).deferred();
-  if (deferred.length === 0) return undefined;
+  if (deferred.length === 0) return { folds };
 
   // Fail-closed: the walkthrough needs an interactive UI to disposition
   // with the user; refuse rather than auto-drop.
   const uiRefusal = requireUi(deps, "Completion walkthrough");
-  if (uiRefusal !== null) return uiRefusal;
+  if (uiRefusal !== null) return { refusal: uiRefusal, folds };
 
   for (const [index, proposal] of deferred.entries()) {
     const answer = await deps.ui.select(presentationOf(proposal), [...WALKTHROUGH_OPTIONS]);
     if (answer === "Drop") {
-      await withFileMutationQueue(join(planDir, proposal.file), async () => {
-        if (deps.fs.exists(proposal.file)) deps.fs.delete(proposal.file);
-      });
+      await deleteProposal(deps, planDir, proposal.file);
+      const designated = folds.findIndex((fold) => fold.file === proposal.file);
+      if (designated !== -1) folds.splice(designated, 1);
       continue;
     }
-    const remaining = deferred.slice(index).map(proposalIdOf).join(", ");
-    return (
-      "reins_complete: the completion walkthrough was interrupted before every deferred proposal " +
-      "was dispositioned; the plan cannot complete while deferred proposals are unresolved " +
-      `(not dispositioned: ${remaining}).`
-    );
+    if (answer === "Fold") {
+      const target = await deps.ui.input(foldTargetTitle(proposal), FOLD_TARGET_PLACEHOLDER);
+      const trimmed = target?.trim() ?? "";
+      if (trimmed === "") {
+        return { refusal: interruptedRefusal(deferred, index), folds };
+      }
+      if (isInsidePlanDir(trimmed, planDir)) {
+        return {
+          refusal:
+            `reins_complete: the fold target for proposal ${proposalIdOf(proposal)} must be outside the ` +
+            "plan directory (the plan directory is written only through the plugin); " +
+            "designate a durable location outside it.",
+          folds,
+        };
+      }
+      const designated = folds.findIndex((fold) => fold.file === proposal.file);
+      const fold: CompletionFold = {
+        proposalId: proposalIdOf(proposal),
+        file: proposal.file,
+        target: trimmed,
+      };
+      if (designated === -1) folds.push(fold);
+      else folds[designated] = fold;
+      continue;
+    }
+    return { refusal: interruptedRefusal(deferred, index), folds };
   }
-  return undefined;
+  return { folds };
+}
+
+/** The interruption refusal: which deferred proposals are still unresolved. */
+function interruptedRefusal(deferred: ProposalDocument[], from: number): string {
+  const remaining = deferred.slice(from).map(proposalIdOf).join(", ");
+  return (
+    "reins_complete: the completion walkthrough was interrupted before every deferred proposal " +
+    "was dispositioned; the plan cannot complete while deferred proposals are unresolved " +
+    `(not dispositioned: ${remaining}).`
+  );
+}
+
+/** The fold instruction returned to the model: what to write where, then attempt again. */
+function foldInstructions(folds: CompletionFold[], scan: PlanScan): string {
+  const byFile = new Map(scan.proposals.map((proposal) => [proposal.file, proposal]));
+  const lines = folds.map((fold) => {
+    const title = byFile.get(fold.file)?.frontmatter.title;
+    const named = typeof title === "string" && title.trim() !== "" ? title : fold.proposalId;
+    return `- Fold proposal ${fold.proposalId} (${named}) into ${fold.target}: ` +
+      "write its content there (its rationale and any draft task content).";
+  });
+  const noun = folds.length === 1 ? "is folded but its content is not written yet" : "are folded but their content is not written yet";
+  return (
+    `reins_complete: ${folds.length} deferred proposal${folds.length === 1 ? "" : "s"} ${noun}. ` +
+    "Write each one into its designated durable location with your normal tools " +
+    "(the plan directory itself is written only through the plugin), then call reins_complete again:\n" +
+    lines.join("\n")
+  );
 }
 
 /**
