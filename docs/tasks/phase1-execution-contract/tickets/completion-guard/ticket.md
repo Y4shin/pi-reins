@@ -75,3 +75,8 @@ the documented environment issue, reproduced identically on `main`).
 - Pushback scope is deliberately broad per spec decision 2: every
   settled run under an active, incomplete contract is pushed back, not
   only runs after an explicit completion attempt.
+- Post-effort lesson: the temporarily-refusing clean-state branch named
+  above was replaced by plan-completion's full path (deferred
+  walkthrough, completion verifier, durable records) on the same
+  `planComplete` / `CompleteToolIo` surface; the refusal-with-remaining
+  list remains the guard half of the tool, unchanged by that ticket.
