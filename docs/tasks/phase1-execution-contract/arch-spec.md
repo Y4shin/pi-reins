@@ -20,17 +20,20 @@ status: stable
 
     src/
       pi.ts          registration shell: default export factory, thin wiring only
-      deps.ts        ReinsDeps, FsPort, ReinsUi, SteeringPort, VerifierRunner
+      deps.ts        ReinsDeps, FsPort, ReinsUi, SteeringPort,
+                     VerifierRunner, SessionPort
       config.ts      ReinsConfig (cadence 4, pushbackMax 2) and flag wiring
       state.ts       ReinsState machine (ephemeral)
       session.ts     private session entries (appendEntry) and reconcile
       plan/          fs.ts, parse.ts, discover.ts, write.ts, validate.ts,
-                     fingerprint.ts (parse/discover/write land first)
+                     fingerprint.ts, proposals.ts
       tools/         task.ts, propose.ts, renegotiate.ts, complete.ts, edit.ts
-      handlers/      context.ts, tool-call.ts, agent-settled.ts, session.ts
+      handlers/      session.ts, attach.ts, activate.ts, context.ts,
+                     tool-call.ts, agent-settled.ts, renegotiate.ts,
+                     drift.ts, watch.ts, review.ts, verifier.ts
       steering/      summary.ts, engine.ts
       ui/            widget.ts, dialogs.ts (requireUi fail-closed guard)
-    agents/          verifier agent definition (registered at runtime)
+    agents/          reins-completion-verifier.md (registered at runtime)
     tests/
       harness/       createHarness, UI stubs, synthetic event firing
       fixtures/      plan-valid/ and the malformed-plan family
@@ -42,9 +45,10 @@ dependencies; `src/pi.ts` only wires real adapters and registers.
 `ReinsDeps` carries: `fs` (root-scoped FsPort), `ui` (dialogs, notify,
 setWidget, hasUI), `now` (ISO 8601 clock), `actor` (human actor id:
 git user.email of the plan directory's repository, else OS username),
-`config`, `session` (appendEntry recorder), `messenger` (sendUserMessage,
-steer), `toolset` (setActiveTools, getActiveTools), `steering`
-(SteeringPort, no-op default), `verifier` (VerifierRunner).
+`config`, `session` (SessionPort: appendEntry recorder plus the
+readEntries accessor plan-editing-review landed), `messenger`
+(sendUserMessage, steer), `toolset` (setActiveTools, getActiveTools),
+`steering` (SteeringPort, no-op default), `verifier` (VerifierRunner).
 
 ## State machine (ephemeral, reconciled at session_start)
 
@@ -81,9 +85,10 @@ plan-editing set `reins_materialize_add`, `reins_edit_task`,
 
 Single surface: `ctx.ui.setWidget("pi-reins", lines)` with goal, active
 work, the Now line (latest progressLog entry), done/total counts,
-blocked list, gate state, pending and deferred proposal counts. Updated
-on turn_end, plugin tool results, and gate transitions; suspended and
-restored around compaction. No footer status line.
+blocked list, gate state, pending and deferred proposal counts, and a
+`Verifier` marker line while the completion verifier is unavailable.
+Updated on turn_end, plugin tool results, and gate transitions;
+suspended and restored around compaction. No footer status line.
 
 ## Steering injection
 
@@ -278,7 +283,7 @@ side effects; skipped when the pi binary is absent).
 
 ## 8. out-of-band-detection (size: l)
 
-- Exports: `fingerprintContract(scan)` added to
+- Exports: `fingerprintContract(fs, scan)` added to
   `src/plan/fingerprint.ts` beside the landed `PlanSnapshot` and
   `snapshotPlanDir(fs, root)` (the in-memory file map, pre-implemented
   by renegotiation-session, snapshot half only; the module doc defers
@@ -286,9 +291,10 @@ side effects; skipped when the pi binary is absent).
   contract-significant content only, per the fs-contract split (never
   executionStatus, blockedReason, completionSummary, progressLog, or
   proposals; unparseable files are hashed by raw content so partial
-  writes are detected, never crash); the session_start-scoped watcher
-  (fs.watch plus polling fallback with unref'd timers,
-  session_shutdown cleanup); turn-boundary comparison plus turn-end
+  writes are detected, never crash); the contract-scoped watcher
+  (created when a contract first binds at attach or activate, torn
+  down at session_shutdown; fs.watch plus polling fallback with
+  unref'd timers); turn-boundary comparison plus turn-end
   drift verification against observed plugin writes; the reaction:
   notify the user, steer the model, enter reconciling (the tool_call
   guard blocks mutations), reconciliation dialog resumes executing on
@@ -380,18 +386,22 @@ side effects; skipped when the pi binary is absent).
   session's `RenegotiationOutcome.snapshot`, a `PlanSnapshot` from
   `src/plan/fingerprint.ts`) and the current state (added, removed,
   and changed tasks with binding-section diffs) with accept, reject
-  (returns to plan-editing), and abandon (restores the snapshot,
-  proposals stay pending, return to executing); acceptance bumps the
-  revision and writes the log Update entry together with the
-  `verified` event by the same writer, deletes the applied proposal
-  documents through the landed `FsPort.delete` (the session
-  deliberately keeps approved proposals pending until here), restores
-  the tool set; enforcement: entering plan-editing already swaps edit
+  (returns to plan-editing), and abandon (restores the snapshot's
+  contract content, leaving everything under `proposals/` untouched so
+  gate-1 dispositions are never relitigated; proposals stay pending,
+  return to executing); acceptance bumps the revision and writes the
+  log Update entry together with the `verified` event by the same
+  writer, deletes every approved intent's
+  proposal document through the landed `FsPort.delete`, including
+  intents the model never materialized (the session deliberately keeps
+  approved proposals pending until here), restores the tool set; enforcement: entering plan-editing already swaps edit
   and write out of the active tool set (landed with
   renegotiation-session; no restore path and no plan-editing tools
   exist until this ticket adds them), and this ticket inverts the
   tool_call guard to block writes outside the plan directory (raw
-  writes into the plan directory remain blocked in every state);
+  writes into the plan directory remain blocked in every state; the
+  inversion covers reviewing as well, since a dismissed dialog parks
+  the session in reviewing with mutations held);
   crash recovery at session_start: leftover `reins-gate-open` /
   `reins-gate-closed` entries (recorded by the session; a closed
   entry carries the dispositions and an `abandoned` flag) resume in
@@ -415,7 +425,10 @@ side effects; skipped when the pi binary is absent).
   crash-recovery reconcile from leftover `reins-gate-open` /
   `reins-gate-closed` entries.
 - Interface contract: the acceptance write utilities (log entry plus
-  status flip plus verified event) are reused for the Completion entry.
+  status flip) are reused for the Completion entry; the fs-contract
+  appends `verified` events only at activation and review acceptance
+  and states nothing is appended at task completion, so the Completion
+  path deliberately writes no `verified` event.
 
 ## 12. plan-completion (size: l)
 
@@ -433,16 +446,19 @@ side effects; skipped when the pi binary is absent).
   pi-subagents' runtime agent registration event (`reins-completion-
   verifier`) and run through the in-process RPC spawn, receiving the
   completion contract (goal, per-task binding sections and completion
-  summaries) and a change digest (accepted revisions from the log),
+  summaries) and a change digest (the plan log's entry lines),
   returning fulfilled or a gap list, with gaps returned to the model
   as the refusal; on success the log Completion entry is written and
-  the plan flips to completed; pi-subagents absence fails visibly at
+  the plan flips to completed (no `verified` event: the fs-contract
+  appends `verified` events only at activation and review acceptance);
+  pi-subagents absence fails visibly at
   session_start (notification plus widget marker) and completion
   refuses with a named error.
 - Existing abstractions: VerifierRunner port (stubbed in the harness;
   the wiring's real runner refuses visibly until this ticket replaces
   it, `VerifierRequest`/`VerifierResult` shapes fixed); acceptance
-  write utilities (`prependLogEntry`, `appendVerifiedEvent`); the
+  write utilities (`prependLogEntry` and the `writeFields` status flip;
+  no `appendVerifiedEvent` at completion, per the fs-contract); the
   session's blocking dialog mechanics and its `deferred: true`
   markers; `FsPort.delete`; requireUi.
 - Do NOT: mark tasks done; complete while deferred items are
@@ -458,7 +474,10 @@ SteeringPort default is a no-op, so completion-guard can land before
 steering-injection (its completion-attempt trigger is a state flag the
 engine reads) and out-of-band-detection can land independently.
 Recommended order if available: change-proposals, steering-injection,
-completion-guard, out-of-band-detection.
+completion-guard, out-of-band-detection. As landed: change-proposals,
+steering-injection, renegotiation-session, completion-guard,
+out-of-band-detection, expected-declaration-nudges, plan-editing-review,
+plan-completion.
 
 # As-built amendments (recorded after each landed ticket)
 
@@ -763,6 +782,236 @@ dependent broke; every delta beyond the planned surface is additive):
   goal" wording is broader than the binding spec; unlinked additions
   surface via exhaustion, initiative, or a later task-start once
   linked).
+
+## After completion-guard (level 4)
+
+The landed surface for later tickets to consume (deviation report: no
+planned API surface broke a dependent):
+
+- `src/tools/complete.ts` exports `remainingWork(remaining)` (the
+  shared one-line renderer used by both the refusal and, later,
+  plan-completion's fold instruction), `planComplete(deps, state,
+  setState)`, `CompleteToolIo` with the required `setState` accessor
+  (the renegotiation-session precedent for tool IOs), and
+  `createCompleteTool`; `ReinsState.pushbackCount?: number` is the
+  chain counter's field name. `requireActiveContract` is exported from
+  `src/tools/task.ts` (was private) so the guard refuses on the same
+  grounds with the right tool name.
+- `src/handlers/agent-settled.ts` exports `createSettledBackstop(io)`
+  with two legs, `onRunStart` (the before_agent_start reset) and
+  `onSettled`; the spec named the handler file but not the two-leg
+  shape, which the reset-on-user-prompt rule requires.
+- Pushback-run identification is an in-memory armed marker consumed at
+  the next run boundary instead of prompt-text comparison, honoring
+  the no-text-heuristics rule. Documented race: a user prompt
+  submitted between the pushback send and the pushback run's
+  before_agent_start is treated as the pushback run and does not reset
+  the chain counter (structural limitation, documented in the module
+  doc).
+- Pushback scope follows decision 2: every settled run under an
+  active, incomplete contract is pushed back, including runs that
+  settled without an explicit completion attempt. `agent_settled`
+  discovery errors propagate out of the handler (no special recovery
+  on an unreadable plan directory).
+- The clean-state branch of `reins_complete` refused with "plan-level
+  completion is not yet implemented in this version" until
+  plan-completion (ticket 12) replaced it; the steering engine's
+  `completionAttempted` forcing path, implemented but untested at
+  steering-injection time, is covered end-to-end by this ticket's
+  seam.
+
+## After out-of-band-detection (level 4)
+
+The landed surface for later tickets to consume (deviation report:
+every delta additive, no dependent changed shape):
+
+- `fingerprintContract(fs, scan)` takes the fs port (the contract's
+  `fingerprintContract(scan)` was shorthand, amended in the ticket
+  contract above): unparseable files are hashed by raw content and the
+  scan carries only paths for supporting files, so read access is
+  required. The fingerprint covers the plan document plus task
+  documents; proposals, index, log, and supporting files are excluded
+  per the fs-contract split; frontmatter is canonically serialized,
+  bodies verbatim. Additive export `contractContentMap(fs, scan)`, the
+  canonical-content half, exposed so the monitor can attribute
+  per-file changes for the observed-writes verification.
+- Two modules beyond the original layout's handlers/ list (the layout
+  above is amended): `src/handlers/drift.ts` (`createDriftMonitor`,
+  `DriftMonitorIo`, `DriftMonitor`) and `src/handlers/watch.ts`
+  (`createPlanWatcher`, `PlanWatcherOptions`, `PlanWatcher`),
+  continuing the attach/activate/renegotiate precedent.
+  `ReinsState.pluginContractWrites?: string[]` is the observed-writes
+  channel tools record contract-significant writes into (ephemeral,
+  drained at verification; no production writer until ticket 11).
+- Watcher scope realized as session-lifetime rather than strict
+  session_start: created when a contract first binds (attach or
+  activate) because session_start deliberately rebuilds detached
+  state; always torn down at session_shutdown. Narrower in reach,
+  same cleanup point.
+- Detection reacts only while executing. During plan-editing and
+  reviewing the watcher and boundary legs stand down; plugin-mediated
+  writes there are absorbed by re-arming on re-entry to executing, and
+  a hand edit during those phases surfaces through plan-editing-
+  review's diff (ticket 11) instead. This is the deliberate reading of
+  the "do not treat plugin-mediated plan-editing writes as
+  out-of-band" rule against the landed state machine.
+- Reconciliation decline behavior (the refusal-side counterpart of
+  accept-resumes-executing): decline keeps mutations held and every
+  following boundary re-offers; no-UI holds fail-closed.
+- RED discovery: `fs.watch` with `recursive: true` on a nonexistent
+  directory neither throws nor emits an error on this Node; it
+  silently watches nothing. The watcher pre-checks the root and routes
+  a missing directory to the polling fallback (test-covered).
+
+## After expected-declaration-nudges (level 5)
+
+The landed surface (deviation report: all deltas additive; the spec
+declared no forward contract for this ticket):
+
+- The observation leg landed as `observeExpectedDeclarations(event,
+  ctx, io)` plus `ExpectedDeclarationIo` (state accessor plus a
+  per-event deps factory rooted at the plan dir) in
+  `src/handlers/tool-call.ts`, the guard's module; `src/pi.ts`
+  composes guard-then-observe in one `tool_call` handler. The raw
+  command line comes from a local `shellCommandOf(event)` helper;
+  `shellWriteTargets` stays consumed via `rawWriteTargets`, which the
+  contract's composition language already covers.
+- Composition pinned by a test: a blocked plan-directory write queues
+  no nudge; the guard's block reason already names the deviation and
+  the legal tools, so the block is the targeted feedback for a call
+  that never proceeds. plan-editing-review (ticket 11) consumes this
+  guard-precedence pattern when it extends the same handler.
+- `STEERED_PHASES` is now exported from `src/steering/engine.ts`
+  (one-word change); the observer gates on it so a queued trigger can
+  never sit undrained as a stale note at some later injection.
+- One `forceInject("expected-declaration", note)` per event, with
+  deviations joined by "; " (a bash event can deviate both as a write
+  target and as a command line). Matching is on raw, unnormalized
+  strings (the path argument and the command line verbatim),
+  mirroring the guard's best-effort stance: an absolute-path write to
+  a declared location can still nudge, advisory noise only (the
+  fs-contract calls tuning the lists normal plan maintenance). Each
+  leg is armed only when that field is declared by an active task (no
+  vacuous all-undeclared match); unusable entries (non-strings,
+  invalid regexes) are skipped, never a crash.
+
+## After plan-editing-review (level 6)
+
+The landed surface for plan-completion to consume (deviation report:
+as planned, with two flagged judgment calls, both amended into the
+ticket contract above):
+
+- The four tools live in `src/tools/edit.ts` (`PlanEditingToolIo`,
+  `createPlanEditingTools`, `requirePlanEditing`); the review
+  machinery (`REVIEW_OPTIONS`, `revisionDiff`, `reviewPresentation`,
+  `finishRevisionReview`) lives in `src/handlers/review.ts`,
+  continuing the attach/activate/renegotiate precedent. The guard
+  inversion covers `reviewing` as well as plan-editing (a dismissed
+  dialog parks the session in reviewing with mutations held); refusal
+  wording names both pauses ("paused in plan editing (revision and
+  review)"); raw writes into the plan directory stay blocked in every
+  bound state.
+- The crash-recovery leg rests on two new ports:
+  `SessionPort.readEntries?()` (`src/deps.ts`), the session-entry read
+  port the attach-validation amendment deferred to this ticket, and
+  `DriftMonitor.reset()` (`src/handlers/drift.ts`), wired at
+  session_start so an in-process resume cannot compare against a stale
+  fingerprint baseline (out-of-band-detection's own tests stay green).
+  Additive surface: `PlanEditingContext` and `ReinsState.planEditing`
+  (ephemeral by contract, never persisted); `writeFields` gained a
+  `body` option and the new `rewriteBindingSections` helper
+  (`src/plan/write.ts`) replaces named binding sections while
+  preserving the rest verbatim.
+- Judgment call 1 (flagged for user review): the abandon restore is
+  scoped to contract content. A literal whole-snapshot restore would
+  relitigate gate-1 dispositions (resurrect rejected proposals,
+  un-defer deferred ones) while the same criterion requires pending
+  proposals intact; everything under `proposals/` is left as the
+  session left it.
+- Judgment call 2 (flagged for user review): acceptance deletes every
+  approved intent's proposal document, including intents the model
+  never materialized; the user's acceptance of the concrete revision
+  consumes the approved set. The review dialog does not yet surface
+  unapplied approved intents.
+- The materialize numeric-prefix convention (max existing task prefix
+  + 10, zero-padded to 3) is convention, not spec; the fs-contract
+  treats prefixes as non-durable ordering only. The adjacent-write
+  windows inside acceptance (revision bump, verified event, log
+  entry, proposal deletions) are the same documented residual class
+  as activation's write pair.
+
+## After plan-completion (level 6)
+
+The effort's last ticket; no dependents downstream of this reconcile
+(deviation report: as planned, plus additive surface and one spec
+correction directed by the binding fs-contract):
+
+- `src/tools/complete.ts` exports `CompleteToolIo`, `remainingWork`
+  (shared with completion-guard), `planComplete(deps, state,
+  setState)`, `WALKTHROUGH_OPTIONS`, and `createCompleteTool`; the
+  ordered path is structural guard, verifier-availability refusal,
+  walkthrough, verifier verdict, then the durable records.
+- Walkthrough: one blocking fold-or-drop dialog per deferred proposal,
+  reusing the renegotiation session's `presentationOf`. A drop deletes
+  the proposal document immediately; a fold asks for a durable target,
+  refuses targets inside the plan directory, and records an
+  outstanding fold on ephemeral `state.completionFolds` (a restart
+  drops the designation while the proposal document stays on disk, so
+  the walkthrough re-asks). Dismissed or unscripted answers abort
+  fail-closed: drops so far stand, folds stay recorded, completion is
+  refused naming the unresolved items. On the next attempt a fold
+  whose designated target exists dispositions the proposal for good
+  and deletes its document through `FsPort.delete` under the mutation
+  queue; unverified folds re-present, so any item can still be folded
+  differently or dropped.
+- Completion verifier (`src/handlers/verifier.ts`, now in the layout's
+  handlers/ list above): exports `VERIFIER_AGENT_NAME`
+  (`reins-completion-verifier`), `RUNTIME_AGENT_REGISTER_EVENT`
+  (`pi-subagents:runtime-agent-register:v1`, the raw event contract,
+  no runtime import of pi-subagents), `registerCompletionVerifier`,
+  `installCompletionVerifier`, `parseVerifierVerdict`, and
+  `createSubagentsVerifier`. The agent ships as
+  `agents/reins-completion-verifier.md` (markdown definition read at
+  registration time), read-only and tool-less, registered at
+  session_start; the run goes through the in-process event-bus RPC
+  spawn with a 15-minute timeout, carrying the completion contract and
+  a change digest (the plan log's entry lines). `VERDICT: fulfilled`
+  completes; bulleted lines become the refusal's named gaps; a failed
+  run refuses naming the failure.
+- Absence handling: the session_start install attempts registration
+  once per session and rides the outcome on
+  `state.verifierUnavailable`; a session whose entries show a bound
+  contract fails visibly at session_start (one error notification plus
+  the widget's `Verifier` marker line); sessions without a bound
+  contract stay inert per the landed inertness rule; `reins_complete`
+  refuses with the named error either way. Wiring order: verifier
+  install before the leftover-gate reconcile, so the state narration
+  stays the last user-visible notification.
+- Completion records, one mutation-queued step: `plan.md` flips to
+  `executionStatus: completed` (`writeFields`), the log gains the
+  `**Completion**: Plan completed: <goal>.` entry newest-first
+  (`prependLogEntry`), the state transitions to completed, and the
+  widget re-renders (Gate: completed). No `verified` event is
+  appended: the fs-contract's Generated and Verified section states
+  verified events are appended only at activation and review
+  acceptance and nothing at task completion. The arch spec's
+  ticket-11/12 wording had the Completion entry reuse the verified
+  event; that contradicted the binding fs-contract, the code followed
+  the fs-contract, and the contract text above is amended accordingly
+  (flagged for the user: a spec-authoring error, not implementation
+  drift).
+- Harness: `h.events`, a process-local pub/sub bus standing in for
+  `pi.events`, lets tests simulate an installed pi-subagents owner
+  (documented in `docs/testing.md`).
+- Known red on the tree, deliberate: two
+  `tests/plan-editing-review.test.ts` crash-recovery tests assert
+  unchanged notification counts across a session_start that follows an
+  attach, and the spec'd visible-absence failure adds exactly one
+  error notification when pi-subagents is absent from the bare vitest
+  environment. Both pass unchanged with a simulated installed owner;
+  foreign tests were left untouched per the divergence rule and the
+  coherence pass owns the fix (fix direction recorded in the ticket
+  doc).
 
 # Decisions taken in this spec (flagged for review)
 
