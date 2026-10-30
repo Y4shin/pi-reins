@@ -66,6 +66,10 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
 
   pi.on("session_start", async (event, ctx) => {
     state = onSessionStart(createDeps(ctx), event as SessionStartEvent);
+    // A restart reconciles against the durable plan directory anew:
+    // the previous session's drift baseline is meaningless here, and
+    // its leftovers (a crash's materialized content) are authoritative.
+    drift.reset();
   });
 
   pi.registerCommand("reins-attach", {
@@ -264,6 +268,12 @@ function createRealDeps(
       appendEntry: (customType, data) => {
         pi.appendEntry(customType, data);
       },
+      // The crash-recovery reconcile reads the session's private
+      // entries back through the session manager at session_start.
+      readEntries: () =>
+        (ctx.sessionManager.getEntries() as ReadonlyArray<{ customType?: string; data?: unknown }>)
+          .filter((entry): entry is { customType: string; data?: unknown } => typeof entry.customType === "string")
+          .map((entry) => ({ customType: entry.customType, data: entry.data })),
     },
     messenger: {
       sendUserMessage: (content, options) => {

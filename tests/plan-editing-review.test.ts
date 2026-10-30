@@ -24,6 +24,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { GATE_CLOSED_ENTRY, GATE_OPEN_ENTRY } from "../src/handlers/renegotiate.js";
 import { createHarness, type ReinsHarness } from "./harness/index.js";
 
 const harnesses: ReinsHarness[] = [];
@@ -486,5 +487,120 @@ describe("review acceptance: the durable records", () => {
     expect(h.toolset.active).toContain("write");
     const start = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
     expect(start.message).toBe("Started inspect-current-system.");
+  });
+});
+
+describe("crash recovery: session_start reconcile of leftover gate records", () => {
+  test("a gate left open by a restart reconciles into executing without touching anything", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    const filesBefore = h.planFiles();
+    h.session.entries.push({
+      customType: GATE_OPEN_ENTRY,
+      data: { planDir: h.planDir, phase: "renegotiating", cause: "initiative" },
+    });
+
+    await h.fire("session_start", { type: "session_start", reason: "resume" });
+
+    // The user is told where things stand; nothing durable happened.
+    expect(h.ui.notifies[h.ui.notifies.length - 1].message).toContain("executing");
+    expect(h.planFiles()).toEqual(filesBefore);
+    expect(h.steering.forced.length).toBe(1);
+
+    // Re-attaching resumes in executing, never in a gate phase.
+    await h.runCommand("reins-attach", "plan");
+    const status = await h.dispatchTool("reins_status");
+    expect(status.message).toContain("executing");
+  });
+
+  test("a crash mid-revision resumes in executing with on-disk content authoritative", async () => {
+    const h = await planEditingHarness(undefined, undefined);
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    const filesBefore = h.planFiles();
+
+    await h.fire("session_start", { type: "session_start", reason: "resume" });
+
+    // On-disk content survives the restart untouched (the documented
+    // residual: materialized-but-unaccepted content stays).
+    expect(h.planFiles()).toEqual(filesBefore);
+    expect(h.planFiles().some((file) => file === "310-migrate-cli-flags.md")).toBe(true);
+    // Approved-but-not-yet-applied-or-deleted proposals stay pending.
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("kind: add");
+    expect(h.ui.notifies[h.ui.notifies.length - 1].message).toContain("pending");
+
+    // Re-attaching resumes in executing, never in plan-editing.
+    await h.runCommand("reins-attach", "plan");
+    const status = await h.dispatchTool("reins_status");
+    expect(status.message).toContain("executing");
+  });
+
+  test("a durable review acceptance is honored across the restart", async () => {
+    const h = await planEditingHarness();
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    // Hand-write the durable acceptance records (log Update plus bumped
+    // revision) as a crash mid-acceptance would have left them.
+    const plan = h.readPlanFile("plan.md").replace("revision: 1", "revision: 2");
+    h.writePlanFile("plan.md", plan);
+    h.writePlanFile(
+      "log.md",
+      [
+        "# Plan Update Log",
+        "",
+        "## 2026-10-01",
+        "* **Update**: Revision 2 accepted. added migrate-cli-flags.",
+        "",
+        "## 2026-09-02",
+        "* **Activation**: Plan activated by the user; execution begins.",
+        "",
+        "## 2026-09-01",
+        "* **Creation**: Initial proposed plan, derived from the masterplan.",
+        "",
+      ].join("\n"),
+    );
+    const filesBefore = h.planFiles();
+
+    await h.fire("session_start", { type: "session_start", reason: "resume" });
+
+    // The acceptance is honored: no rollback, no re-application, the
+    // pending proposal survives.
+    expect(h.planFiles()).toEqual(filesBefore);
+    expect(h.readPlanFile("plan.md")).toContain("revision: 2");
+    expect(h.readPlanFile("log.md")).toContain("**Update**: Revision 2 accepted");
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("kind: add");
+
+    await h.runCommand("reins-attach", "plan");
+    const status = await h.dispatchTool("reins_status");
+    expect(status.message).toContain("executing");
+  });
+
+  test("an abandoned gate record reconciles silently", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    h.session.entries.push({
+      customType: GATE_CLOSED_ENTRY,
+      data: { planDir: h.planDir, phase: "executing", approved: [], deferred: [], rejected: [], abandoned: true },
+    });
+    const notifiesBefore = h.ui.notifies.length;
+
+    await h.fire("session_start", { type: "session_start", reason: "resume" });
+
+    expect(h.ui.notifies.length).toBe(notifiesBefore);
+    expect(h.steering.forced).toEqual([]);
+    await h.runCommand("reins-attach", "plan");
+    const status = await h.dispatchTool("reins_status");
+    expect(status.message).toContain("executing");
+  });
+
+  test("a session without gate records starts inert as before", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.runCommand("reins-attach", "plan");
+    const filesBefore = h.planFiles();
+    const notifiesBefore = h.ui.notifies.length;
+
+    await h.fire("session_start", { type: "session_start", reason: "resume" });
+
+    expect(h.ui.notifies.length).toBe(notifiesBefore);
+    expect(h.steering.forced).toEqual([]);
+    expect(h.planFiles()).toEqual(filesBefore);
   });
 });
