@@ -303,10 +303,14 @@ export async function openRenegotiationSession(
   const finalState =
     approved.length > 0 ? transition(gateState, "plan-editing") : transition(gateState, "executing");
   // Entering plan-editing swaps raw edit and write out of the active
-  // tool set (plan editing goes through the plugin tools).
+  // tool set (plan editing goes through the plugin tools) and carries
+  // the session context the plan-editing tools and the review gate
+  // consume: the approved intents, the pre-session snapshot, and the
+  // tool set to restore when the review concludes.
   if (finalState.phase === "plan-editing") {
     const active = deps.toolset.getActiveTools();
     deps.toolset.setActiveTools(active.filter((name) => name !== "edit" && name !== "write"));
+    finalState.planEditing = { approved, snapshot, tools: active };
   }
   deps.session.appendEntry(GATE_CLOSED_ENTRY, {
     planDir,

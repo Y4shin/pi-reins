@@ -44,6 +44,12 @@ export interface MessengerPort {
 /** Private session-entry recorder (entries never enter LLM context). */
 export interface SessionPort {
   appendEntry(customType: string, data?: unknown): void;
+  /**
+   * The session's private entries, oldest first. The crash-recovery
+   * reconcile reads them at session_start; the wiring reads them back
+   * from pi's session manager.
+   */
+  readEntries?(): Array<{ customType: string; data?: unknown }>;
 }
 
 /** Active-tool-set port used for the plan-editing tool swap. */

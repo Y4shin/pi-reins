@@ -62,6 +62,12 @@ export interface DriftMonitor {
   onWatchedDrift(): Promise<void>;
   /** Tear the watcher down (the session_shutdown leg). */
   stop(): void;
+  /**
+   * Drop the baseline and watcher (the session_start leg): a restart
+   * reconciles against the durable plan directory anew, so a stale
+   * baseline never reacts to a crash's legitimate leftovers.
+   */
+  reset(): void;
 }
 
 /** One measured state of the plan directory: fingerprint plus canonical content. */
@@ -269,6 +275,14 @@ export function createDriftMonitor(io: DriftMonitorIo): DriftMonitor {
     },
 
     stop() {
+      watcher?.stop();
+      watcher = undefined;
+      watchedDir = undefined;
+    },
+
+    reset() {
+      baseline = undefined;
+      lastPhase = undefined;
       watcher?.stop();
       watcher = undefined;
       watchedDir = undefined;
