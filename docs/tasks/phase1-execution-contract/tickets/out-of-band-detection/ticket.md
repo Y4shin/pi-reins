@@ -75,3 +75,11 @@ environment issue does not fire without it).
   directory neither throws nor emits an error on this Node; it silently
   watches nothing. The watcher pre-checks the root and routes a missing
   directory to the polling fallback (test-covered).
+- Post-effort lesson: `state.pluginContractWrites` has no production
+  writer even after plan-editing-review landed; the executing-only
+  reaction window plus re-arming the baseline on every re-entry to
+  executing made the observed-writes channel unnecessary in practice,
+  so it stands as tested but unwired surface. A later effort can either
+  wire the plan-editing tools' contract-significant writes into it or
+  retire it; leaving it inert is safe because detection stands down
+  outside executing.

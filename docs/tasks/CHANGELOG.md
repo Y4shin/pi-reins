@@ -86,3 +86,12 @@ binding-section extraction, findings never crashes, generated-stamped
 writes), and the plan-valid plus malformed fixture family. Gate:
 typecheck clean, 24/24 tests, live inert-load verified against the
 real pi CLI (0.84.4).
+
+## 2026-10-30, Plan-level completion guard and settled pushback (completion-guard)
+`reins_complete` refuses with the remaining-work list while any task is
+pending, in_progress, or blocked and forces one steering injection via
+`state.completionAttempted`; the agent_settled backstop seeds a capped
+chain of user-role pushback runs (armed-marker identification, reset on
+a real user prompt) while a bound contract has remaining work. The
+clean-state refusal was the staged home plan-completion's full path
+later replaced. Gate: typecheck clean, 15 files / 145 tests.
