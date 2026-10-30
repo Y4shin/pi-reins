@@ -247,3 +247,45 @@ describe("declared matches and tasks without the fields", () => {
     expect(proposed.steering.forced).toEqual([]);
   });
 });
+
+describe("advisory only", () => {
+  test("the nudge never blocks the write or the command", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+
+    // An out-of-declaration write proceeds: no block decision.
+    const write = await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/other/loader.ts", content: "x" },
+    });
+    expect(write).toEqual([]);
+
+    // A shell command with an undeclared write target proceeds too.
+    const shell = await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "echo x > src/other/notes.md" },
+    });
+    expect(shell).toEqual([]);
+
+    // Both deviations were still observed for the next injection.
+    expect(h.steering.forced).toHaveLength(2);
+    expect(h.steering.forced[0].note).toContain("src/other/loader.ts");
+    expect(h.steering.forced[1].note).toContain("src/other/notes.md");
+  });
+
+  test("a blocked plan-directory write keeps the guard's block and queues no nudge", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+
+    const blocked = await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "plan/100-inspect-current-system.md", content: "tampered" },
+    });
+    expect(blocked).toHaveLength(1);
+    expect((blocked[0] as { block?: boolean }).block).toBe(true);
+    expect(h.steering.forced).toEqual([]);
+  });
+});
