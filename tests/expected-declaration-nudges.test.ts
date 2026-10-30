@@ -56,7 +56,7 @@ async function executingHarness(config?: HarnessOptions["config"]): Promise<Rein
 }
 
 describe("out-of-declaration writes", () => {
-  test("a write outside every declared path regex forces an injection with a targeted note, regardless of cadence", async () => {
+  test("a write outside every declared path regex forces a targeted injection, regardless of cadence", async () => {
     const h = await executingHarness();
     await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
 
@@ -96,7 +96,7 @@ describe("out-of-declaration writes", () => {
 });
 
 describe("out-of-declaration commands", () => {
-  test("a command matching none of the declared command regexes forces an injection with a targeted note, regardless of cadence", async () => {
+  test("an unmatched command forces a targeted injection too, regardless of cadence", async () => {
     const h = await executingHarness();
     await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
 
