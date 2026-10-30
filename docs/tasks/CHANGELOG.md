@@ -105,3 +105,12 @@ idle edits; drift notifies, steers, and holds mutations in reconciling
 until the dialog resumes executing. Detection reacts only while
 executing; hand edits during gate phases surface through the review
 diff. Gate: typecheck clean, 17 files / 167 tests.
+
+## 2026-10-30, Expected-declaration steering nudges (expected-declaration-nudges)
+The tool_call observation leg matches writes and shell commands against
+the union of active tasks' declared `expectedPathRegexes` /
+`expectedBashRegexes` and force-injects a targeted one-line note on a
+deviation, overriding the cadence; guard precedence is pinned (a
+blocked plan-directory write queues no nudge). Advisory by
+construction: no block path, the write always proceeds, matching is
+raw-string best-effort. Gate: typecheck clean, 18 files / 179 tests.
