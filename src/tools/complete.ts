@@ -61,7 +61,9 @@ export function remainingWork(remaining: TaskDocument[]): string {
       return `${idOf(task)} (${statusText}${reasonText})`;
     })
     .join("; ");
-  return `${remaining.length} task${remaining.length === 1 ? "" : "s"} remain: ${list}`;
+  const noun = remaining.length === 1 ? "task" : "tasks";
+  const verb = remaining.length === 1 ? "remains" : "remain";
+  return `${remaining.length} ${noun} ${verb}: ${list}`;
 }
 
 /** The plan-level completion attempt: the guard decides whether it can proceed. */
