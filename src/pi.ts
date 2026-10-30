@@ -23,7 +23,8 @@ import type {
   ReinsDeps,
   ReinsUi,
   VerifierRunner,
-} from "./deps.js";import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
+} from "./deps.js";
+import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { createSettledBackstop } from "./handlers/agent-settled.js";
 import { createDriftMonitor } from "./handlers/drift.js";
 import { guardPlanDirWrites, observeExpectedDeclarations } from "./handlers/tool-call.js";
@@ -93,6 +94,9 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
     if (verifier.install.ok) {
       verifierRunner = verifier.install.runner ?? verifierRunner;
       verifierRegistration = verifier.install.registration;
+    } else {
+      // The old registration (if any) is already disposed by the install.
+      verifierRegistration = undefined;
     }
   });
 

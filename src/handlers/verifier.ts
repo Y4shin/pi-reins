@@ -257,15 +257,18 @@ function waitForAsyncComplete(events: EventBus, runId: string): Promise<AsyncCom
 /**
  * Parse the verifier's final answer into the verdict. The agent is
  * instructed to answer `VERDICT: fulfilled` or `VERDICT: gaps` with
- * one named gap per `- ` line; anything else reads as gaps (the whole
- * answer becomes one unnamed gap when nothing parses).
+ * one named gap per `- ` line; the bulleted lines are the gaps, and an
+ * answer without them reads as one unnamed gap (so it still reaches
+ * the model instead of vanishing).
  */
 export function parseVerifierVerdict(text: string): VerifierResult {
   if (/VERDICT:\s*fulfilled/i.test(text)) return { fulfilled: true, gaps: [] };
   const gaps = text
     .split("\n")
-    .map((line) => line.replace(/^\s*-\s+/, "").trim())
-    .filter((line) => line !== "" && !/^VERDICT:/i.test(line));
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim())
+    .filter((gap) => gap !== "");
   if (gaps.length > 0) return { fulfilled: false, gaps };
   const collapsed = text.replace(/\s+/g, " ").trim();
   return {
