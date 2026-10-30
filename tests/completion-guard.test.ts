@@ -126,3 +126,20 @@ describe("reins_complete", () => {
     expect(consumed.injected).toBe(false); // one-shot: consumed by that injection
   });
 });
+
+describe("agent_settled backstop", () => {
+  test("a settled run with remaining work seeds a corrective run through the user-role message", async () => {
+    const h = await executingHarness();
+
+    await h.fire("agent_settled", { type: "agent_settled" });
+
+    expect(h.messenger.userMessages).toHaveLength(1);
+    const pushback = h.messenger.userMessages[0];
+    expect(pushback).toContain("inspect-current-system (pending)");
+    expect(pushback).toContain("implement-change (pending)");
+    expect(pushback).toContain("verify-result (pending)");
+    // The pushback channel is the user-role message, per the prototype
+    // measurement; steering stays the context-tail summary's channel.
+    expect(h.messenger.steered).toEqual([]);
+  });
+});
