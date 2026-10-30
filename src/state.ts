@@ -103,3 +103,20 @@ export function transition(state: ReinsState, to: ReinsPhase): ReinsState {
   }
   return { ...state, phase: to };
 }
+
+/**
+ * Record a contract-significant file the plugin wrote (the
+ * plan-editing tools, the review gate's acceptance and restore) on the
+ * state the drift monitor drains at its next verification, so the
+ * plugin's own writes are never treated as out-of-band. Ephemeral:
+ * the record rides the state and is never persisted.
+ */
+export function recordContractWrite(
+  state: ReinsState,
+  setState: (state: ReinsState) => void,
+  file: string,
+): void {
+  const observed = state.pluginContractWrites ?? [];
+  if (observed.includes(file)) return;
+  setState({ ...state, pluginContractWrites: [...observed, file] });
+}

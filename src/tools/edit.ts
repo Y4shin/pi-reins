@@ -28,7 +28,8 @@ import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import { dumpDocument, splitFrontmatter, type ProposalDraftTask } from "../plan/parse.js";
 import { generatedBy, rewriteBindingSections, writeFields } from "../plan/write.js";
-import type { ReinsState, PlanEditingContext } from "../state.js";
+import { finishRevisionReview } from "../handlers/review.js";
+import { recordContractWrite, type ReinsState, type PlanEditingContext } from "../state.js";
 import { renderWidget } from "../ui/widget.js";
 
 /** The deps-and-state accessors every plan-editing tool executes through. */
@@ -64,15 +65,15 @@ export function requirePlanEditing(
   return { planDir: state.planDir, planEditing: state.planEditing };
 }
 
-/** Record a contract-significant write for the drift monitor's verification. */
-export function recordContractWrite(
-  io: PlanEditingToolIo,
+/**
+ * Record a contract-significant write for the drift monitor's verification.
+ */
+function recordWrite(
+  state: ReinsState,
+  setState: (state: ReinsState) => void,
   file: string,
 ): void {
-  const state = io.state();
-  const observed = state.pluginContractWrites ?? [];
-  if (observed.includes(file)) return;
-  io.setState({ ...state, pluginContractWrites: [...observed, file] });
+  recordContractWrite(state, setState, file);
 }
 
 /**
@@ -213,7 +214,7 @@ export async function materializeAdd(
   await withFileMutationQueue(join(planDir, file), async () => {
     deps.fs.write(file, dumpDocument(frontmatter, composeTaskBody(draft)));
   });
-  recordContractWrite({ deps: () => deps, state: () => state, setState }, file);
+  recordWrite(state, setState, file);
   renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
   return result(`Added task ${id} (${file}) from proposal ${proposalId}.`);
 }
@@ -270,7 +271,7 @@ export async function editTask(
     const newBody = rewriteBindingSections(split.body, sections);
     writeFields(deps, task.file, title !== undefined ? { title } : {}, { body: newBody });
   });
-  recordContractWrite({ deps: () => deps, state: () => state, setState }, task.file);
+  recordWrite(state, setState, task.file);
   renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
   return result(`Edited ${taskId}.`);
 }
@@ -306,22 +307,27 @@ export async function removeTask(
   await withFileMutationQueue(join(planDir, task.file), async () => {
     if (deps.fs.exists(task.file)) deps.fs.delete(task.file);
   });
-  recordContractWrite({ deps: () => deps, state: () => state, setState }, task.file);
+  recordWrite(state, setState, task.file);
   renderWidget(deps, state, discoverPlanDir(deps.fs, planDir));
   return result(`Removed ${taskId} (${task.file}).`);
 }
 
 /**
- * Submit the revision to the concrete review gate. (Body in the
- * review-gate slice.)
+ * Submit the revision to the concrete review gate: the phase
+ * transition to reviewing and the post-dialog returns happen inside
+ * this tool execution (the tool IO carries the setState accessor).
  */
 export async function finishRevision(
   deps: ReinsDeps,
   state: ReinsState,
   setState: (state: ReinsState) => void,
 ): Promise<PlanEditingToolResult> {
-  requirePlanEditing(state, "reins_finish_revision");
-  throw new Error("reins_finish_revision: the review gate is not available yet.");
+  const outcome = await finishRevisionReview(deps, state, setState);
+  if (outcome.result.kind === "refused") {
+    // The fail-closed refusal (no interactive UI): surface verbatim.
+    throw new Error(outcome.result.report);
+  }
+  return result(outcome.result.report);
 }
 
 const PROPOSAL_ID_PARAM = Type.Object({

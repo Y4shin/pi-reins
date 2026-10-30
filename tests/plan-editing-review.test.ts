@@ -45,9 +45,12 @@ const FIXED_NOW = () => "2026-10-01T12:00:00.000Z";
  * one renegotiation sweep approving the fixture's addition proposal
  * (cp-add-cli-migration, draft task migrate-cli-flags), optionally
  * plus a modify or remove proposal written and approved for a target.
+ * `reviewAnswer` scripts the review dialog of reins_finish_revision
+ * (an omitted answer dismisses it, matching the fail-closed stub).
  */
 async function planEditingHarness(
-  extra: { modify?: boolean; remove?: boolean } = {},
+  extra: { modify?: boolean; remove?: boolean; deferModify?: boolean } = {},
+  reviewAnswer?: string | ((title: string) => string | undefined),
 ): Promise<ReinsHarness> {
   const extras: string[] = [];
   if (extra.modify) {
@@ -90,12 +93,18 @@ async function planEditingHarness(
     planDir: "plan-active",
     now: FIXED_NOW,
     uiScript: {
-      select: (title: string) =>
-        title.includes("Drop the implementation") || title.includes("Retitle the verification")
-          ? "Approve"
-          : title.includes("cp-add-cli-migration")
-            ? "Approve"
-            : "Defer",
+      select: (title: string) => {
+        if (reviewAnswer !== undefined && /revision review/i.test(title)) {
+          return typeof reviewAnswer === "function" ? reviewAnswer(title) : reviewAnswer;
+        }
+        if (title.includes("Retitle the verification")) return extra.deferModify ? "Defer" : "Approve";
+        if (
+          title.includes("Drop the implementation") || title.includes("cp-add-cli-migration")
+        ) {
+          return "Approve";
+        }
+        return "Defer";
+      },
     },
   });
   await h.runCommand("reins-attach", "plan");
@@ -308,5 +317,109 @@ describe("materialization: applying the approved intents", () => {
       expect(outcome.isError, tool).toBe(true);
       expect(outcome.message, tool).toContain("plan editing");
     }
+  });
+});
+
+describe("the review gate: dialog, reject, abandon", () => {
+  test("the review dialog presents the concrete revision as the diff from the pre-session snapshot", async () => {
+    const h = await planEditingHarness({ modify: true, remove: true }, "Reject");
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    await h.dispatchTool("reins_edit_task", {
+      taskId: "verify-result",
+      acceptanceCriteria: "- The focused verification passes.",
+    });
+    await h.dispatchTool("reins_remove_task", { taskId: "implement-change" });
+
+    const outcome = await h.dispatchTool("reins_finish_revision");
+    expect(outcome.isError).toBe(false);
+
+    // One blocking dialog: the concrete diff, with accept, reject, and
+    // abandon as the answers.
+    const dialog = h.ui.dialogs[h.ui.dialogs.length - 1];
+    expect(dialog.kind).toBe("select");
+    expect(dialog.options).toEqual(["Accept", "Reject", "Abandon"]);
+    const title = dialog.title;
+    expect(title).toContain("310-migrate-cli-flags");
+    expect(title).toContain("Migrate the CLI flags");
+    expect(title).toContain("200-implement-change.md");
+    expect(title).toContain("verify-result");
+    expect(title).toContain("Acceptance Criteria");
+    expect(title).toContain("The focused verification passes.");
+  });
+
+  test("a dismissed review dialog holds reviewing fail-closed and can be re-offered", async () => {
+    const h = await planEditingHarness();
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+
+    const dismissed = await h.dispatchTool("reins_finish_revision");
+    expect(dismissed.isError).toBe(false);
+    // Nothing durable happened, and the review stays open.
+    const refused = await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    expect(refused.isError).toBe(true);
+    expect(refused.message).toContain("reviewing");
+
+    // Re-offering works: the next finish presents the dialog again.
+    let calls = 0;
+    const h2 = await planEditingHarness({ modify: true }, () => {
+      calls += 1;
+      return calls === 1 ? undefined : "Reject";
+    });
+    await h2.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    const first = await h2.dispatchTool("reins_finish_revision");
+    expect(first.isError).toBe(false);
+    expect(h2.ui.dialogs[h2.ui.dialogs.length - 1].options).toEqual(["Accept", "Reject", "Abandon"]);
+    const second = await h2.dispatchTool("reins_finish_revision");
+    expect(second.isError).toBe(false);
+    expect(second.message).toContain("plan editing");
+  });
+
+  test("rejection returns to plan-editing with the revision still in hand", async () => {
+    const h = await planEditingHarness({ modify: true }, "Reject");
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+
+    const outcome = await h.dispatchTool("reins_finish_revision");
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.message).toContain("plan editing");
+    // The materialized content stays; editing continues from it.
+    expect(h.planFiles().some((file) => file === "310-migrate-cli-flags.md")).toBe(true);
+    const again = await h.dispatchTool("reins_edit_task", { taskId: "verify-result", title: "Retitled again" });
+    expect(again.isError).toBe(false);
+    expect(h.readPlanFile("300-verify-result.md")).toContain("title: Retitled again");
+  });
+
+  test("abandon restores the pre-session snapshot, keeps proposals, and returns to executing", async () => {
+    const h = await planEditingHarness({ modify: true, remove: true }, "Abandon");
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    await h.dispatchTool("reins_edit_task", { taskId: "verify-result", title: "Retitled during revision" });
+    await h.dispatchTool("reins_remove_task", { taskId: "implement-change" });
+
+    const outcome = await h.dispatchTool("reins_finish_revision");
+
+    expect(outcome.isError).toBe(false);
+    // The contract content is the pre-session snapshot again.
+    expect(h.planFiles().some((file) => file === "310-migrate-cli-flags.md")).toBe(false);
+    expect(h.readPlanFile("300-verify-result.md")).toContain("title: Verify the result");
+    expect(h.readPlanFile("300-verify-result.md")).toContain("- The full test suite passes.");
+    expect(h.planFiles().some((file) => file === "200-implement-change.md")).toBe(true);
+    // Pending proposals survive untouched, gate-1 dispositions included.
+    expect(h.readPlanFile("proposals/cp-add-cli-migration.md")).toContain("kind: add");
+    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toContain("kind: modify");
+    // The tool set is restored and executing resumes.
+    expect(h.toolset.active).toContain("edit");
+    expect(h.toolset.active).toContain("write");
+    const start = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    expect(start.message).toBe("Started inspect-current-system.");
+  });
+
+  test("abandon does not relitigate gate-1 dispositions: deferred markers survive", async () => {
+    const h = await planEditingHarness({ modify: true, deferModify: true }, "Abandon");
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+
+    const outcome = await h.dispatchTool("reins_finish_revision");
+    expect(outcome.isError).toBe(false);
+
+    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toContain("deferred: true");
+    expect(h.planFiles().some((file) => file === "310-migrate-cli-flags.md")).toBe(false);
   });
 });
