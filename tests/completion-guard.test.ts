@@ -166,4 +166,19 @@ describe("agent_settled backstop", () => {
 
     expect(h.messenger.userMessages).toHaveLength(1);
   });
+
+  test("a user-submitted prompt resets the chain; the pushback run's own start does not", async () => {
+    const h = await executingHarness({ pushbackMax: 1 });
+
+    await h.fire("agent_settled"); // push 1: the chain is at the cap
+    await h.fire("before_agent_start", { prompt: "pushback run" }); // the pushback run's start: no reset
+    await h.fire("agent_settled"); // capped
+    expect(h.messenger.userMessages).toHaveLength(1);
+
+    // A user-submitted prompt resets the chain; the next settle pushes again.
+    await h.fire("before_agent_start", { prompt: "keep going after the interruption" });
+    await h.fire("agent_settled");
+
+    expect(h.messenger.userMessages).toHaveLength(2);
+  });
 });
