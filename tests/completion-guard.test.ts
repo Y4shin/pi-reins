@@ -181,4 +181,36 @@ describe("agent_settled backstop", () => {
 
     expect(h.messenger.userMessages).toHaveLength(2);
   });
+
+  test("a settled run with clean state triggers nothing", async () => {
+    const h = await executingHarness();
+    // Defer the fixture proposal so completing the last task does not
+    // open the exhaustion gate; the backstop itself keys on remaining
+    // task state only.
+    h.writePlanFile(
+      "proposals/cp-add-cli-migration.md",
+      h.readPlanFile("proposals/cp-add-cli-migration.md").replace("kind: add\n", "kind: add\ndeferred: true\n"),
+    );
+    for (const taskId of ["inspect-current-system", "implement-change", "verify-result"]) {
+      await h.dispatchTool("reins_task_start", { taskId });
+      await h.dispatchTool("reins_task_complete", { taskId, completionSummary: `Did ${taskId}.` });
+    }
+
+    await h.fire("agent_settled", { type: "agent_settled" });
+
+    expect(h.messenger.userMessages).toEqual([]);
+    expect(h.messenger.steered).toEqual([]);
+  });
+
+  test("a settled run without an active contract triggers nothing", async () => {
+    const attached = makeHarness({ planDir: "plan-valid", now: FIXED_NOW });
+    await attached.runCommand("reins-attach", "plan"); // attached, not activated
+
+    await attached.fire("agent_settled", { type: "agent_settled" });
+    expect(attached.messenger.userMessages).toEqual([]);
+
+    const detached = makeHarness({});
+    await detached.fire("agent_settled", { type: "agent_settled" });
+    expect(detached.messenger.userMessages).toEqual([]);
+  });
 });
