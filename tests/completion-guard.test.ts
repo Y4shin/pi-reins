@@ -28,6 +28,26 @@ afterEach(() => {
 
 const FIXED_NOW = () => "2026-10-01T12:00:00.000Z";
 
+/** The steering message shape the context handler appends. */
+interface SteeringMessage {
+  role: string;
+  customType: string;
+  display: boolean;
+  content: string;
+}
+
+/** One LLM call: fire the context event with a fresh outgoing message list. */
+async function callLlm(h: ReinsHarness): Promise<{ injected: boolean; message?: SteeringMessage }> {
+  const messages: unknown[] = [{ role: "user", content: "Continue executing the plan.", timestamp: 1 }];
+  const results = await h.fire("context", { type: "context", messages });
+  if (results.length === 0) return { injected: false };
+  const message = messages[messages.length - 1] as unknown as SteeringMessage;
+  expect(message.role).toBe("custom");
+  expect(message.customType).toBe("reins-steering");
+  expect(message.display).toBe(false);
+  return { injected: true, message };
+}
+
 /** A harness attached to the active fixture: the contract is executing. */
 async function executingHarness(config?: HarnessOptions["config"]) {
   const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW, config });
@@ -87,5 +107,22 @@ describe("reins_complete", () => {
 
     expect(outcome.isError).toBe(true);
     expect(outcome.message).toContain("not active");
+  });
+
+  test("a completion attempt forces the next steering injection, and only that one", async () => {
+    // Periodic injection off: only forced triggers inject, so the flag
+    // is isolated from the cadence rhythm.
+    const h = await executingHarness({ cadence: 0 });
+    const first = await callLlm(h);
+    expect(first.injected).toBe(true); // first call of the run
+    const second = await callLlm(h);
+    expect(second.injected).toBe(false);
+
+    await h.dispatchTool("reins_complete"); // the attempt (refused with remaining work)
+
+    const after = await callLlm(h);
+    expect(after.injected).toBe(true); // forced by the completion attempt
+    const consumed = await callLlm(h);
+    expect(consumed.injected).toBe(false); // one-shot: consumed by that injection
   });
 });
