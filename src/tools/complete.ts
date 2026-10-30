@@ -105,6 +105,16 @@ export async function planComplete(
     );
   }
 
+  // A hard dependency, never silently skipped: without the verifier
+  // (pi-subagents absent at session start) completion refuses by name.
+  if (state.verifierUnavailable !== undefined) {
+    throw new Error(
+      `reins_complete: the completion verifier is unavailable (${state.verifierUnavailable}). ` +
+        `Plan completion is verified by the fresh-context reins-completion-verifier agent, run ` +
+        "through pi-subagents; install pi-subagents (pi install npm:pi-subagents) and restart the session.",
+    );
+  }
+
   // The walkthrough: every deferred proposal ends folded or dropped
   // before the plan can complete. Drops are immediate; folds are
   // verified structurally against their designated targets, outstanding

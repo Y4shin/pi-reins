@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { createHarness, type HarnessOptions, type ReinsHarness, type UiScript } from "./harness/index.js";
+import { RUNTIME_AGENT_REGISTER_EVENT } from "../src/handlers/verifier.js";
 
 const harnesses: ReinsHarness[] = [];
 
@@ -293,5 +294,76 @@ describe("reins_complete: the completion verifier", () => {
 
     expect(after.isError).toBe(true);
     expect(after.message).toContain("phase: completed");
+  });
+});
+
+describe("reins_complete: pi-subagents availability", () => {
+  test("with pi-subagents present, session start stays silent and completion reaches the walkthrough", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW, uiScript: { select: () => undefined } });
+    // The installed pi-subagents owner answers the runtime registration
+    // event synchronously (the process-local contract).
+    h.events.on(RUNTIME_AGENT_REGISTER_EVENT, (request) => {
+      (request as { result?: unknown }).result = { ok: true, registration: { dispose() {} } };
+    });
+    await h.fire("session_start", { reason: "startup" });
+    await completeTasks(h);
+
+    const outcome = await h.dispatchTool("reins_complete");
+
+    // Registration succeeded without user-visible effects; the attempt
+    // reached the walkthrough (dismissed here), not an availability refusal.
+    expect(h.ui.notifies.some((entry) => entry.type === "error")).toBe(false);
+    expect(h.ui.dialogs.length).toBe(1);
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("not dispositioned");
+  });
+
+  test("with pi-subagents absent, a session with a bound contract fails visibly at session start", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    // Crash-resume shape: the session entries carry the attach record.
+    h.session.entries.push({ customType: "reins-attached", data: { planDir: h.planDir, phase: "executing" } });
+
+    await h.fire("session_start", { reason: "resume" });
+
+    const notify = h.ui.notifies.at(-1);
+    expect(notify?.type).toBe("error");
+    expect(notify?.message).toContain("pi-subagents");
+    const widget = h.ui.widgets.at(-1);
+    expect(widget?.lines?.join("\n")).toContain("pi-subagents");
+  });
+
+  test("with pi-subagents absent, a fresh session stays inert at session start", async () => {
+    const h = makeHarness({});
+
+    await h.fire("session_start", { reason: "startup" });
+
+    // No contract is bound: nothing is notified or rendered.
+    expect(h.ui.notifies).toEqual([]);
+    expect(h.ui.widgets).toEqual([]);
+  });
+
+  test("completion refuses with a named error when pi-subagents is absent", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.fire("session_start", { reason: "startup" }); // absent: silent here, remembered
+    await completeTasks(h);
+
+    const outcome = await h.dispatchTool("reins_complete");
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.message).toContain("pi-subagents is unavailable");
+    expect(outcome.message).toContain("reins-completion-verifier");
+    // The walkthrough never ran: verification is never silently skipped.
+    expect(h.ui.dialogs).toEqual([]);
+  });
+
+  test("the widget carries the verifier marker while verification is unavailable", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.fire("session_start", { reason: "startup" });
+    await completeTasks(h);
+
+    const rendered = h.ui.widgets.map((widget) => widget.lines?.join("\n") ?? "").join("\n");
+
+    expect(rendered).toContain("Verifier");
+    expect(rendered).toContain("pi-subagents");
   });
 });

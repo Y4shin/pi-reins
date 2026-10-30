@@ -86,6 +86,14 @@ export interface ReinsState {
    * fold verifies, so a restart re-asks the disposition.
    */
   completionFolds?: CompletionFold[];
+  /**
+   * Why completion verification is unavailable (pi-subagents absence),
+   * set once per session at the session_start registration attempt.
+   * Undefined means the verifier registered. The completion tool
+   * refuses on it with the named error and the widget carries the
+   * marker while it is set. Ephemeral like the rest of this state.
+   */
+  verifierUnavailable?: string;
 }
 
 /** The renegotiation session's in-flight revision, carried by the phase it belongs to. */

@@ -83,11 +83,18 @@ export interface ToolOutcome {
   result?: unknown;
 }
 
+export interface HarnessEventBus {
+  on(type: string, handler: (data: unknown) => void): () => void;
+  emit(type: string, data: unknown): void;
+}
+
 export interface HarnessExtensionApi {
   on(type: string, handler: Handler): void;
   registerTool(definition: HarnessToolDefinition): void;
   registerCommand(name: string, definition: HarnessCommandDefinition): void;
   registerFlag(name: string, definition: unknown): void;
+  /** The process-local event bus (pi.events): runtime agent registration, RPC. */
+  events: HarnessEventBus;
   registeredEvents(): string[];
   registeredTools(): string[];
   registeredCommands(): string[];
@@ -108,6 +115,8 @@ export interface ReinsHarness {
   verifier: { requests: VerifierRequest[] };
   /** One capture per ctx.abort() call a command handler made. */
   aborts: number[];
+  /** The process-local event bus the wiring sees as pi.events. */
+  events: HarnessEventBus;
   api: HarnessExtensionApi;
   /** Register a test tool through the same boundary pi registration uses. */
   registerTool(definition: HarnessToolDefinition): void;
@@ -142,6 +151,26 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
   const steering = { forced: [] as Array<{ reason: string; note?: string }> };
   const verifier = { requests: [] as VerifierRequest[] };
   const aborts: number[] = [];
+
+  // The process-local event bus (pi.events in the real runtime). Tests
+  // simulate an installed pi-subagents owner by registering a listener
+  // for the runtime agent registration event; without one, the plugin
+  // sees the dependency as absent.
+  const eventListeners = new Map<string, Array<(data: unknown) => void>>();
+  const events: HarnessEventBus = {
+    on(type, handler) {
+      const list = eventListeners.get(type) ?? [];
+      list.push(handler);
+      eventListeners.set(type, list);
+      return () => {
+        const current = eventListeners.get(type) ?? [];
+        eventListeners.set(type, current.filter((candidate) => candidate !== handler));
+      };
+    },
+    emit(type, data) {
+      for (const handler of [...(eventListeners.get(type) ?? [])]) handler(data);
+    },
+  };
 
   const sessionPort: SessionPort = {
     appendEntry: (customType, data) => {
@@ -223,6 +252,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
       list.push(handler);
       handlers.set(type, list);
     },
+    events,
     registerTool(definition) {
       tools.set(definition.name, definition);
     },
@@ -302,6 +332,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
     steering,
     verifier,
     aborts,
+    events,
     api,
     registerTool: (definition) => api.registerTool(definition),
     on: (type, handler) => api.on(type, handler),
