@@ -139,3 +139,111 @@ describe("out-of-declaration commands", () => {
     expect(nudged.message?.content).toContain("make all");
   });
 });
+
+describe("declared matches and tasks without the fields", () => {
+  test("a write inside a declared path regex triggers nothing", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/config/loader.ts", content: "x" },
+    });
+    expect(h.steering.forced).toEqual([]);
+  });
+
+  test("a command matching a declared command regex triggers nothing", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "npm test -- --filter config" },
+    });
+    expect(h.steering.forced).toEqual([]);
+  });
+
+  test("an active task without the fields triggers nothing", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/anything.ts", content: "x" },
+    });
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "curl -s https://example.com" },
+    });
+    expect(h.steering.forced).toEqual([]);
+  });
+
+  test("a field no active task declares triggers nothing for it", async () => {
+    const h = await executingHarness();
+    // implement-change declares paths only: its commands are unchecked.
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "npm run dev" },
+    });
+    expect(h.steering.forced).toEqual([]);
+
+    // verify-result declares commands only: its writes are unchecked.
+    await h.dispatchTool("reins_task_complete", {
+      taskId: "implement-change",
+      completionSummary: "Loader migrated.",
+    });
+    await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/other/notes.md", content: "x" },
+    });
+    expect(h.steering.forced).toEqual([]);
+  });
+
+  test("matching is against the union of the active tasks' declared lists", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "implement-change" });
+    await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    // Declared by implement-change's path list and verify-result's
+    // command list respectively: the union declares them.
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "tests/config/loader.test.ts", content: "x" },
+    });
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "git status" },
+    });
+    expect(h.steering.forced).toEqual([]);
+  });
+
+  test("no active work, and no active contract, trigger nothing", async () => {
+    const h = await executingHarness();
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/other/loader.ts", content: "x" },
+    });
+    expect(h.steering.forced).toEqual([]);
+
+    // Attached but not active: the proposed contract observes nothing.
+    const proposed = makeHarness({ planDir: "plan-valid", now: FIXED_NOW });
+    await proposed.runCommand("reins-attach", "plan");
+    await proposed.fire("tool_call", {
+      type: "tool_call",
+      toolName: "write",
+      input: { path: "src/other/loader.ts", content: "x" },
+    });
+    expect(proposed.steering.forced).toEqual([]);
+  });
+});

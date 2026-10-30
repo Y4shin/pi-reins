@@ -240,9 +240,14 @@ export function observeExpectedDeclarations(
       : `active tasks ${active.map(taskIdOf).join(", ")}`;
 
   const deviations: string[] = [];
-  for (const target of rawWriteTargets(event)) {
-    if (!pathRegexes.some((regex) => regex.test(target))) {
-      deviations.push(`wrote "${target}", which matches no expectedPathRegexes of the ${who}`);
+  // Each leg is armed only when that field is declared at all: tasks
+  // without the fields, and fields no active task declares, never
+  // trigger.
+  if (pathRegexes.length > 0) {
+    for (const target of rawWriteTargets(event)) {
+      if (!pathRegexes.some((regex) => regex.test(target))) {
+        deviations.push(`wrote "${target}", which matches no expectedPathRegexes of the ${who}`);
+      }
     }
   }
   const command = shellCommandOf(event);
