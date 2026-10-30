@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Plan completion with deferred walkthrough and verifier agent
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - renegotiation-session
 size: l
