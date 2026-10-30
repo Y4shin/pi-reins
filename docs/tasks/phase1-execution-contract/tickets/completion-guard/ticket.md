@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Plan-level completion guard and settled pushback
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - task-lifecycle
 size: m
