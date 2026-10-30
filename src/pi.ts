@@ -77,15 +77,19 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
 
   pi.on("session_start", async (event, ctx) => {
     const deps = createDeps(ctx);
+    // The verifier install is the session's startup health check and
+    // runs before any state narration: a bound contract with an absent
+    // runtime hears the availability failure first, then where things
+    // stand. The flag it produced rides the reconciled state.
+    const verifier = installCompletionVerifier(deps, pi, verifierRegistration, freshState());
     state = onSessionStart(deps, event as SessionStartEvent);
+    if (verifier.state.verifierUnavailable !== undefined) {
+      state = { ...state, verifierUnavailable: verifier.state.verifierUnavailable };
+    }
     // A restart reconciles against the durable plan directory anew:
     // the previous session's drift baseline is meaningless here, and
     // its leftovers (a crash's materialized content) are authoritative.
     drift.reset();
-    // The fresh-context completion verifier registers through
-    // pi-subagents here; its absence is refusal-locked on the state.
-    const verifier = installCompletionVerifier(deps, pi, verifierRegistration, state);
-    state = verifier.state;
     if (verifier.install.ok) {
       verifierRunner = verifier.install.runner ?? verifierRunner;
       verifierRegistration = verifier.install.registration;
