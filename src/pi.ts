@@ -31,6 +31,7 @@ import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 import { createTaskTools } from "./tools/task.js";
+import { createCompleteTool } from "./tools/complete.js";
 import { createProposeTool } from "./tools/propose.js";
 import { createRenegotiateTool } from "./tools/renegotiate.js";
 
@@ -114,6 +115,19 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
 
   pi.registerTool(
     createProposeTool({
+      deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+      state: () => state,
+      setState: (next) => {
+        state = next;
+      },
+    }),
+  );
+
+  // The plan-level completion guard: every attempt is checked against
+  // the durable plan directory and refused with the remaining-work list
+  // while work remains.
+  pi.registerTool(
+    createCompleteTool({
       deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
       state: () => state,
       setState: (next) => {

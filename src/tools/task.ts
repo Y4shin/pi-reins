@@ -49,8 +49,12 @@ function result(text: string): TaskToolResult {
   return { content: [{ type: "text", text }], details: {} };
 }
 
-/** The bound plan directory, or a refusal naming what is missing. */
-function requireActiveContract(state: ReinsState, toolName: string): string {
+/** The bound plan directory, or a refusal naming what is missing.
+ *
+ * Also the completion guard's entry check: the plan-level guard runs
+ * inside the same tool surface, so it refuses on the same grounds.
+ */
+export function requireActiveContract(state: ReinsState, toolName: string): string {
   if (state.phase === "detached" || state.planDir === undefined) {
     throw new Error(`${toolName}: no contract is attached; run /reins-attach <path> first.`);
   }
