@@ -34,6 +34,7 @@ import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 import { createTaskTools } from "./tools/task.js";
 import { createCompleteTool } from "./tools/complete.js";
+import { createPlanEditingTools } from "./tools/edit.js";
 import { createProposeTool } from "./tools/propose.js";
 import { createRenegotiateTool } from "./tools/renegotiate.js";
 
@@ -153,14 +154,31 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
     }),
   );
 
+  // The plan-editing tools: the only write path into the contract
+  // while an approved revision is materialized, and the review gate's
+  // submission surface. Their execution transitions the phase (review
+  // outcomes), so they carry the setState accessor like the gates do.
+  for (const tool of createPlanEditingTools({
+    deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+    state: () => state,
+    setState: (next) => {
+      state = next;
+    },
+  })) {
+    pi.registerTool(tool);
+  }
+
   // Raw writes into the plan directory are blocked pre-execution for
   // every bound contract; the reins_* tools are the legal alternative
-  // the block reason names. The expected-declaration observer rides the
+  // the block reason names. During plan-editing the guard is inverted:
+  // every raw write is blocked (inside by this rule, outside by the
+  // inversion), because the contract is being revised through the
+  // plan-editing tools. The expected-declaration observer rides the
   // same surface, advisory only: it queues a steering nudge for writes
   // and commands outside the active tasks' declared lists and never
   // blocks (a blocked call's reason is the targeted feedback there).
   pi.on("tool_call", (event, ctx) => {
-    const blocked = guardPlanDirWrites(event, ctx, { planDir: state.planDir });
+    const blocked = guardPlanDirWrites(event, ctx, { planDir: state.planDir, phase: state.phase });
     if (blocked !== undefined) return blocked;
     observeExpectedDeclarations(event, ctx, {
       state: () => state,

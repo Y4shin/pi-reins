@@ -21,6 +21,9 @@
  * plan directory at session_start; it is never persisted.
  */
 
+import type { ApprovedIntent } from "./handlers/renegotiate.js";
+import type { PlanSnapshot } from "./plan/fingerprint.js";
+
 export type ReinsPhase =
   | "detached"
   | "attached"
@@ -66,6 +69,26 @@ export interface ReinsState {
    * out-of-band. Ephemeral like the rest of this state; never persisted.
    */
   pluginContractWrites?: string[];
+  /**
+   * The plan-editing session context, present only in the
+   * plan-editing and reviewing phases: the approved intents the
+   * materialization tools are gated on, the pre-session snapshot the
+   * review flow diffs against and abandon restores, and the active
+   * tool set to restore when the review concludes. Ephemeral like the
+   * rest of this state: a restart drops it, and the session-start
+   * reconcile resumes in executing on the durable plan directory.
+   */
+  planEditing?: PlanEditingContext;
+}
+
+/** The renegotiation session's in-flight revision, carried by the phase it belongs to. */
+export interface PlanEditingContext {
+  /** Approved proposals, as the intents plan editing materializes. */
+  approved: ApprovedIntent[];
+  /** The pre-session snapshot: the review diff base and the abandon restore. */
+  snapshot: PlanSnapshot;
+  /** The active tool set before the plan-editing swap; restored at the review's end. */
+  tools: string[];
 }
 
 export function freshState(): ReinsState {
