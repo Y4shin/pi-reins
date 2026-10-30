@@ -105,3 +105,17 @@ divergence below, not regressions in this ticket's surface.
   ticket and the coherence pass, which fixes those tests, needs this
   ticket landed first. Full detail in
   `deviation-reports/plan-completion.md`.
+- Post-effort lesson 1: the deliberate red was resolved by the
+  coherence pass (commit `f2dde93`), which updated both tests to
+  register an installed-owner listener on the harness event bus; the
+  suite gate then ran green at 20 files / 219 tests on the final
+  branch.
+- Post-effort lesson 2 (advisory-review finding, documented here per
+  the review's smallest-fix suggestion): the fold target verification
+  in `runDeferredWalkthrough` calls node:fs `existsSync(fold.target)`
+  directly, bypassing the injected `deps.fs` port, because designated
+  fold targets deliberately live outside the plan directory the port
+  is rooted at. The bypass means the harness exercises the real fs for
+  that one existence check; it was accepted as an fs-port escape hatch
+  rather than ported, and the arch spec's DI section still holds for
+  every other handler and tool.
