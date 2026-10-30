@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { GATE_CLOSED_ENTRY, GATE_OPEN_ENTRY } from "../src/handlers/renegotiate.js";
+import { RUNTIME_AGENT_REGISTER_EVENT } from "../src/handlers/verifier.js";
 import { createHarness, type ReinsHarness } from "./harness/index.js";
 
 const harnesses: ReinsHarness[] = [];
@@ -582,6 +583,11 @@ describe("crash recovery: session_start reconcile of leftover gate records", () 
 
   test("an abandoned gate record reconciles silently", async () => {
     const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    // An installed pi-subagents owner so the session_start verifier
+    // install stays silent and the count below reads the reconcile only.
+    h.events.on(RUNTIME_AGENT_REGISTER_EVENT, (request) => {
+      (request as { result?: unknown }).result = { ok: true, registration: { dispose() {} } };
+    });
     await h.runCommand("reins-attach", "plan");
     h.session.entries.push({
       customType: GATE_CLOSED_ENTRY,
@@ -600,6 +606,11 @@ describe("crash recovery: session_start reconcile of leftover gate records", () 
 
   test("a session without gate records starts inert as before", async () => {
     const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    // An installed pi-subagents owner so the session_start verifier
+    // install stays silent and the count below reads the reconcile only.
+    h.events.on(RUNTIME_AGENT_REGISTER_EVENT, (request) => {
+      (request as { result?: unknown }).result = { ok: true, registration: { dispose() {} } };
+    });
     await h.runCommand("reins-attach", "plan");
     const filesBefore = h.planFiles();
     const notifiesBefore = h.ui.notifies.length;

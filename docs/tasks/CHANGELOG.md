@@ -126,3 +126,15 @@ deleted in one mutation step), rejection, or a contract-scoped
 abandon. Crash recovery reconciles leftover gate records on
 session_start via `SessionPort.readEntries` and `DriftMonitor.reset`.
 Gate: typecheck clean, 19 files / 202 tests.
+
+## 2026-10-30, Plan completion with deferred walkthrough and verifier agent (plan-completion)
+The full `reins_complete` path: structural guard, named
+verifier-availability refusal, a blocking fold-or-drop walkthrough per
+deferred proposal (durable targets outside the plan directory,
+structural re-verification on the next attempt, drops immediate under
+`FsPort.delete`), the fresh-context `reins-completion-verifier` agent
+registered through pi-subagents' runtime registration event with a
+fail-visible absence story, then the Completion log entry and the
+completed flip. No `verified` event at completion per the binding
+fs-contract. Gate: typecheck clean, 20 files / 219 tests after the
+coherence pass fixed the two deliberate-red crash-recovery tests.

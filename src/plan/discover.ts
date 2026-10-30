@@ -9,7 +9,8 @@
  * every level and never serve as task, phase, or plan documents.
  */
 
-import type { FsPort } from "../deps.js";import {
+import type { FsPort } from "../deps.js";
+import {
   extractBindingSections,
   extractProposalDraft,
   parseDoc,

@@ -177,3 +177,14 @@ New fog: none.
   replanning state machine, and enforcement/context strategy as the areas
   that materially affect whether the plugin fulfills its mission; this map
   operationalizes them.
+- **Remaining gaps as of archive (2026-10-30):** the effort's advisory
+  whole-effort review found the arch spec's Widget section requirement
+  (refresh on turn_end, suspend and restore around compaction)
+  unimplemented and previously unrecorded in any deviation report; it and
+  the review's P2 duplication notes (shared `oneLine`/id helpers, two
+  divergent plan-directory containment predicates, a duplicated
+  frontmatter-parse block) are cleanup and follow-up candidates for the
+  next effort. `ReinsState.pluginContractWrites` is landed, tested, and
+  unwired (see the out-of-band-detection ticket's post-effort lesson); the
+  review dialog does not surface unmaterialized approved intents. None of
+  these block the MVP behavior this map settled.

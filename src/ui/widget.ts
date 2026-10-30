@@ -90,6 +90,12 @@ function widgetLines(state: ReinsState, scan: PlanScan): string[] {
     lines.push(`Blocked: ${blocked.map(describeBlocked).join(", ")}`);
   }
   lines.push(`Gate: ${state.phase}`);
+  // The verifier marker: when the completion verifier could not be
+  // registered (pi-subagents absent), completion is refusal-locked and
+  // the surface says so instead of staying silent.
+  if (state.verifierUnavailable !== undefined) {
+    lines.push("Verifier: unavailable (pi-subagents missing)");
+  }
   // Pending and deferred proposal counts, per the architecture spec's
   // widget surface. Deferred proposals stay in the pending set and are
   // counted apart.
