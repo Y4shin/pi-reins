@@ -189,7 +189,9 @@ describe("agent_settled backstop", () => {
     // task state only.
     h.writePlanFile(
       "proposals/cp-add-cli-migration.md",
-      h.readPlanFile("proposals/cp-add-cli-migration.md").replace("kind: add\n", "kind: add\ndeferred: true\n"),
+      h
+        .readPlanFile("proposals/cp-add-cli-migration.md")
+        .replace("kind: add\n", "kind: add\ndeferred: true\n"),
     );
     for (const taskId of ["inspect-current-system", "implement-change", "verify-result"]) {
       await h.dispatchTool("reins_task_start", { taskId });
