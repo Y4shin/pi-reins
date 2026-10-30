@@ -233,6 +233,7 @@ export function observeExpectedDeclarations(
   if (active.length === 0) return;
 
   const pathRegexes = active.flatMap((task) => declaredRegexes(task.frontmatter.expectedPathRegexes));
+  const bashRegexes = active.flatMap((task) => declaredRegexes(task.frontmatter.expectedBashRegexes));
   const who =
     active.length === 1
       ? `active task ${taskIdOf(active[0])}`
@@ -243,6 +244,14 @@ export function observeExpectedDeclarations(
     if (!pathRegexes.some((regex) => regex.test(target))) {
       deviations.push(`wrote "${target}", which matches no expectedPathRegexes of the ${who}`);
     }
+  }
+  const command = shellCommandOf(event);
+  if (
+    command !== undefined &&
+    bashRegexes.length > 0 &&
+    !bashRegexes.some((regex) => regex.test(command))
+  ) {
+    deviations.push(`ran "${command}", which matches no expectedBashRegexes of the ${who}`);
   }
   if (deviations.length > 0) {
     deps.steering.forceInject("expected-declaration", deviations.join("; "));

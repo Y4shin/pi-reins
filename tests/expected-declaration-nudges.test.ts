@@ -94,3 +94,48 @@ describe("out-of-declaration writes", () => {
     expect(h.steering.forced[0].note).toContain("src/unrelated.ts");
   });
 });
+
+describe("out-of-declaration commands", () => {
+  test("a command matching none of the declared command regexes forces an injection with a targeted note, regardless of cadence", async () => {
+    const h = await executingHarness();
+    await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    await callLlm(h); // call 1: first of the run
+    await callLlm(h); // call 2: outside cadence, nothing queued
+
+    const fired = await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "curl -s https://example.com" },
+    });
+    // Advisory: the observation never blocks the call.
+    expect(fired).toEqual([]);
+    expect(h.steering.forced).toHaveLength(1);
+    expect(h.steering.forced[0].reason).toBe("expected-declaration");
+    expect(h.steering.forced[0].note).toContain("curl -s https://example.com");
+
+    const nudged = await callLlm(h); // call 3: forced override, mid-cadence
+    expect(nudged.injected).toBe(true);
+    expect(nudged.message?.content).toContain("Note:");
+    expect(nudged.message?.content).toContain("curl -s https://example.com");
+  });
+
+  test("a cadence of 0 still injects the nudge", async () => {
+    const h = await executingHarness({ cadence: 0 });
+    await h.dispatchTool("reins_task_start", { taskId: "verify-result" });
+
+    await callLlm(h); // call 1: first of the run is forced even at cadence 0
+    const quiet = await callLlm(h); // call 2: periodic injection is disabled
+    expect(quiet.injected).toBe(false);
+
+    await h.fire("tool_call", {
+      type: "tool_call",
+      toolName: "bash",
+      input: { command: "make all" },
+    });
+    const nudged = await callLlm(h); // call 3: the nudge forces it anyway
+    expect(nudged.injected).toBe(true);
+    expect(nudged.message?.content).toContain("Note:");
+    expect(nudged.message?.content).toContain("make all");
+  });
+});
