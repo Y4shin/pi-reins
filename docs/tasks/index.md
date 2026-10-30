@@ -9,7 +9,9 @@ title: docs/tasks
 ## Live
 
 - agent-dashboard
+- final-cleanup
 - karen-mode
+- phase1-mop-up
 - subagent-plan-integration
 
 ## Archived
