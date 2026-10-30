@@ -26,7 +26,7 @@ import { composeSummary } from "./summary.js";
 export const STEERING_MESSAGE_TYPE = "reins-steering";
 
 /** Phases in which the contract is active and steering is injected. */
-const STEERED_PHASES: readonly ReinsState["phase"][] = [
+export const STEERED_PHASES: readonly ReinsState["phase"][] = [
   "executing",
   "renegotiating",
   "plan-editing",

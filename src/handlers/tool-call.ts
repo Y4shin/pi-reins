@@ -8,15 +8,23 @@
  * Shell inspection is best-effort: redirection targets, the file
  * arguments of the usual write commands, and `dd of=` are treated as
  * write targets. Reads never block, and writes outside the plan
- * directory never block. Later tickets extend this handler (the nudge
- * observer composes with it; plan-editing inverts it to also block
- * writes outside the plan directory); raw writes into the plan
- * directory stay blocked in every bound state.
+ * directory never block. A second leg rides the same surface: the
+ * expected-declaration observer nudges (never blocks) on writes and
+ * commands outside the active tasks' declared lists; plan-editing
+ * later inverts the guard to also block writes outside the plan
+ * directory. Raw writes into the plan directory stay blocked in every
+ * bound state.
  */
 
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
+
+import type { ReinsDeps } from "../deps.js";
+import { discoverPlanDir } from "../plan/discover.js";
+import type { TaskDocument } from "../plan/parse.js";
+import type { ReinsState } from "../state.js";
+import { STEERED_PHASES } from "../steering/engine.js";
 
 /** The bound contract the guard protects; nothing is blocked without one. */
 export interface GuardedContract {
@@ -162,4 +170,95 @@ export function guardPlanDirWrites(
     }
   }
   return undefined;
+}
+
+/** Inputs the expected-declaration observer needs, built by the wiring. */
+export interface ExpectedDeclarationIo {
+  /** Live ephemeral state, re-read per event. */
+  state: () => ReinsState;
+  /** Deps factory; the wiring roots the fs port at the attached plan directory. */
+  deps: (ctx: unknown) => ReinsDeps;
+}
+
+/** Valid compiled regexes from a declared frontmatter list. */
+function declaredRegexes(value: unknown): RegExp[] {
+  if (!Array.isArray(value)) return [];
+  const patterns: RegExp[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.trim() === "") continue;
+    try {
+      patterns.push(new RegExp(entry));
+    } catch {
+      // An unusable declared pattern is skipped, never a crash: the
+      // lists are advisory and under-declaring them is normal.
+    }
+  }
+  return patterns;
+}
+
+function taskIdOf(task: TaskDocument): string {
+  return String(task.frontmatter.id ?? task.file);
+}
+
+/** The raw shell command line of a shell tool_call event, if any. */
+function shellCommandOf(event: ToolCallEvent): string | undefined {
+  if (event.toolName !== "bash" && event.toolName !== "powershell") return undefined;
+  const input = event.input as Record<string, unknown>;
+  const command = input.command;
+  return typeof command === "string" && command.trim() !== "" ? command : undefined;
+}
+
+/**
+ * The expected-declaration observation leg: advisory steering only.
+ *
+ * A write target matching none of the active tasks' declared
+ * expectedPathRegexes, or a shell command matching none of their
+ * declared expectedBashRegexes, queues a forced steering injection
+ * naming the deviation. The call always proceeds; the declared lists
+ * are expectation, never permission. Tasks without the fields, and
+ * fields no active task declares, trigger nothing. Blocked calls (the
+ * guard's decision above) are not observed: the block reason is the
+ * targeted feedback there.
+ */
+export function observeExpectedDeclarations(
+  event: ToolCallEvent,
+  ctx: unknown,
+  io: ExpectedDeclarationIo,
+): void {
+  const state = io.state();
+  if (state.planDir === undefined || !STEERED_PHASES.includes(state.phase)) return;
+  const deps = io.deps(ctx);
+  const scan = discoverPlanDir(deps.fs, state.planDir);
+  const active = scan.tasks.filter((task) => task.frontmatter.executionStatus === "in_progress");
+  if (active.length === 0) return;
+
+  const pathRegexes = active.flatMap((task) => declaredRegexes(task.frontmatter.expectedPathRegexes));
+  const bashRegexes = active.flatMap((task) => declaredRegexes(task.frontmatter.expectedBashRegexes));
+  const who =
+    active.length === 1
+      ? `active task ${taskIdOf(active[0])}`
+      : `active tasks ${active.map(taskIdOf).join(", ")}`;
+
+  const deviations: string[] = [];
+  // Each leg is armed only when that field is declared at all: tasks
+  // without the fields, and fields no active task declares, never
+  // trigger.
+  if (pathRegexes.length > 0) {
+    for (const target of rawWriteTargets(event)) {
+      if (!pathRegexes.some((regex) => regex.test(target))) {
+        deviations.push(`wrote "${target}", which matches no expectedPathRegexes of the ${who}`);
+      }
+    }
+  }
+  const command = shellCommandOf(event);
+  if (
+    command !== undefined &&
+    bashRegexes.length > 0 &&
+    !bashRegexes.some((regex) => regex.test(command))
+  ) {
+    deviations.push(`ran "${command}", which matches no expectedBashRegexes of the ${who}`);
+  }
+  if (deviations.length > 0) {
+    deps.steering.forceInject("expected-declaration", deviations.join("; "));
+  }
 }
