@@ -166,9 +166,13 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   // prompt (but not on the pushback run's own start).
   const settledBackstop = createSettledBackstop({
     state: () => state,
+    setState: (next) => {
+      state = next;
+    },
     deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
   });
   pi.on("agent_settled", (_event, ctx) => settledBackstop.onSettled(ctx));
+  pi.on("before_agent_start", () => settledBackstop.onRunStart());
 
   pi.on(
     "context",

@@ -51,6 +51,12 @@ export interface ReinsState {
    * reads it to force an injection (the completion-guard ticket sets it).
    */
   completionAttempted?: boolean;
+  /**
+   * The settled-run pushback chain counter (the agent_settled backstop
+   * increments it per pushback, capped by config.pushbackMax); a
+   * user-submitted prompt resets it, the pushback run's own start does not.
+   */
+  pushbackCount?: number;
 }
 
 export function freshState(): ReinsState {

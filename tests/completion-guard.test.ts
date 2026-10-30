@@ -142,4 +142,28 @@ describe("agent_settled backstop", () => {
     // measurement; steering stays the context-tail summary's channel.
     expect(h.messenger.steered).toEqual([]);
   });
+
+  test("the pushback chain is capped at pushbackMax (default 2)", async () => {
+    const h = await executingHarness();
+
+    // Settle, pushback run starts, settles again: each cycle seeds one
+    // more pushback until the cap, then the chain stays silent.
+    await h.fire("agent_settled");
+    await h.fire("before_agent_start", { prompt: "pushback run" });
+    await h.fire("agent_settled");
+    await h.fire("before_agent_start", { prompt: "pushback run" });
+    await h.fire("agent_settled");
+
+    expect(h.messenger.userMessages).toHaveLength(2);
+  });
+
+  test("the cap follows config.pushbackMax", async () => {
+    const h = await executingHarness({ pushbackMax: 1 });
+
+    await h.fire("agent_settled");
+    await h.fire("before_agent_start", { prompt: "pushback run" });
+    await h.fire("agent_settled");
+
+    expect(h.messenger.userMessages).toHaveLength(1);
+  });
 });
