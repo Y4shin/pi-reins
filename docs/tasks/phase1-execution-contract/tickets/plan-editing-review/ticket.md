@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Plan-editing enforcement, review gate, abandon, and crash recovery
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - renegotiation-session
 size: xl
