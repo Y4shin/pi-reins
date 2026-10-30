@@ -101,3 +101,11 @@ tickets:
   event, log entry, proposal deletions) are the same documented
   residual class as activation's write pair; a crash mid-step leaves
   partial records that the reconciler treats as authoritative.
+- Post-effort lesson: plan-completion consumed the acceptance write
+  utilities but, per the binding fs-contract ("Nothing is appended at
+  task completion"), writes its Completion entry without a
+  `appendVerifiedEvent` call; the arch spec's ticket-11/12 wording
+  over-included the verified event and was amended at reconcile. The
+  review dialog still does not surface unapplied approved intents
+  (judgment call 2 above); that remains an open product consideration
+  for a later effort.
