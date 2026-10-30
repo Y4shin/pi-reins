@@ -147,6 +147,7 @@ export function createHarness(options: HarnessOptions = {}): ReinsHarness {
     appendEntry: (customType, data) => {
       session.entries.push({ customType, data });
     },
+    readEntries: () => session.entries.map((entry) => ({ ...entry })),
   };
 
   const messengerPort: MessengerPort = {

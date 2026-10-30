@@ -8,11 +8,12 @@
  * Shell inspection is best-effort: redirection targets, the file
  * arguments of the usual write commands, and `dd of=` are treated as
  * write targets. Reads never block, and writes outside the plan
- * directory never block. A second leg rides the same surface: the
- * expected-declaration observer nudges (never blocks) on writes and
- * commands outside the active tasks' declared lists; plan-editing
- * later inverts the guard to also block writes outside the plan
- * directory. Raw writes into the plan directory stay blocked in every
+ * directory never block outside plan-editing. A second leg rides the
+ * same surface: the expected-declaration observer nudges (never
+ * blocks) on writes and commands outside the active tasks' declared
+ * lists. Plan-editing (ticket 11) inverts the guard: raw writes
+ * outside the plan directory are blocked while the contract is being
+ * revised. Raw writes into the plan directory stay blocked in every
  * bound state.
  */
 
@@ -23,13 +24,15 @@ import type { ToolCallEvent, ToolCallEventResult } from "@earendil-works/pi-codi
 import type { ReinsDeps } from "../deps.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import type { TaskDocument } from "../plan/parse.js";
-import type { ReinsState } from "../state.js";
+import type { ReinsPhase, ReinsState } from "../state.js";
 import { STEERED_PHASES } from "../steering/engine.js";
 
 /** The bound contract the guard protects; nothing is blocked without one. */
 export interface GuardedContract {
   /** The plan directory (absolute), set once a contract is attached. */
   planDir?: string;
+  /** The ephemeral phase: plan-editing inverts the guard's outside-write rule. */
+  phase?: ReinsPhase;
 }
 
 /** Shell commands whose positional arguments are all write targets. */
@@ -153,20 +156,44 @@ export function shellWriteTargets(command: string): string[] {
 }
 
 /**
+ * The refusal the plan-editing inversion issues: every raw write is
+ * blocked while the contract is parked for its review, inside and out.
+ */
+function planEditingRefusalReason(target: string): string {
+  return (
+    `Blocked write outside the plan directory ("${target}"): the contract is paused in plan ` +
+    "editing (revision and review). Finish the revision through the plan-editing tools " +
+    "(reins_materialize_add, reins_edit_task, reins_remove_task) and submit it for review with " +
+    "reins_finish_revision; raw writes resume when the review concludes."
+  );
+}
+
+/**
  * The tool_call handler leg that blocks raw writes into the plan
- * directory. Returns a block decision with a reason naming the plugin
- * tools, or undefined to let the call proceed.
+ * directory in every bound state. During plan-editing (and the
+ * reviewing pause its submission opens) the guard is inverted: writes
+ * outside the plan directory are blocked too (the contract is being
+ * revised and reviewed through the plugin tools until the review
+ * concludes), while reads and the plugin's own tools pass.
  */
 export function guardPlanDirWrites(
   event: ToolCallEvent,
   ctx: { cwd: string },
   contract: GuardedContract,
 ): ToolCallEventResult | undefined {
-  if (contract.planDir === undefined) return undefined;
-  const planDir = resolve(contract.planDir);
-  for (const target of rawWriteTargets(event)) {
-    if (resolvesInside(target, ctx.cwd, planDir)) {
-      return { block: true, reason: refusalReason(target) };
+  const planDir = contract.planDir === undefined ? undefined : resolve(contract.planDir);
+  if (planDir !== undefined) {
+    for (const target of rawWriteTargets(event)) {
+      if (resolvesInside(target, ctx.cwd, planDir)) {
+        return { block: true, reason: refusalReason(target) };
+      }
+    }
+  }
+  if ((contract.phase === "plan-editing" || contract.phase === "reviewing") && planDir !== undefined) {
+    for (const target of rawWriteTargets(event)) {
+      if (!resolvesInside(target, ctx.cwd, planDir)) {
+        return { block: true, reason: planEditingRefusalReason(target) };
+      }
     }
   }
   return undefined;
