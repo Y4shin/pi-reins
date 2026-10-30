@@ -16,7 +16,7 @@
  * no-op.
  */
 
-import { watch, type FSWatcher } from "node:fs";
+import { existsSync, watch, type FSWatcher } from "node:fs";
 
 /** Polling fallback cadence when the native watcher is unavailable. */
 const POLL_INTERVAL_MS = 2_000;
@@ -83,11 +83,19 @@ export function createPlanWatcher(options: PlanWatcherOptions): PlanWatcher {
     pollTimer.unref?.();
   };
 
-  try {
-    watcher = watch(options.planDir, { recursive: true }, () => scheduleDrift());
-    watcher.on("error", (err: Error) => fallbackToPolling(err.message));
-  } catch (err) {
-    fallbackToPolling((err as Error).message);
+  if (!existsSync(options.planDir)) {
+    // A native recursive watcher on a missing directory neither throws
+    // nor errors on every platform: it silently watches nothing. Route
+    // the missing root straight to the polling fallback; the fallback
+    // keeps watching and sees the directory appear.
+    fallbackToPolling(`the plan directory does not exist yet: ${options.planDir}`);
+  } else {
+    try {
+      watcher = watch(options.planDir, { recursive: true }, () => scheduleDrift());
+      watcher.on("error", (err: Error) => fallbackToPolling(err.message));
+    } catch (err) {
+      fallbackToPolling((err as Error).message);
+    }
   }
 
   return {

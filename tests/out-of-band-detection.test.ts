@@ -12,9 +12,13 @@
  * absorbed silently, never treated as out-of-band.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createDriftMonitor, type DriftMonitor } from "../src/handlers/drift.js";
+import { createNodeFsPort } from "../src/plan/fs.js";
 import type { ReinsState } from "../src/state.js";
 import { createHarness, type ReinsHarness } from "./harness/index.js";
 
@@ -272,5 +276,113 @@ describe("detection is scoped to an active contract", () => {
 
     expect(h.ui.dialogs).toEqual([]);
     expect(h.steering.forced.filter((t) => t.reason === "out-of-band")).toEqual([]);
+  });
+});
+
+describe("the session-scoped watcher: live notification while idle", () => {
+  test("an edit while idle is noticed by the watcher without any boundary event", async () => {
+    const h = await executingHarness();
+
+    // No run is active: the edit lands and the watcher notices on its own.
+    handEdit(h);
+    await vi.waitFor(() => expect(h.ui.dialogs).toHaveLength(1), { timeout: 2_000 });
+
+    // The reaction ran: held with the dialog declined (unscripted).
+    expect(LAST_WIDGET(h)).toContain("Gate: reconciling");
+    const forced = h.steering.forced.find((trigger) => trigger.reason === "out-of-band");
+    expect(forced?.note).toContain("100-inspect-current-system.md");
+  });
+
+  test("plugin and proposal writes while idle never wake the watcher into a reaction", async () => {
+    const h = await executingHarness();
+
+    await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    h.writePlanFile(
+      "proposals/cp-add-cli-migration.md",
+      `${h.readPlanFile("proposals/cp-add-cli-migration.md")}\nAn idle-hour rationale addition.\n`,
+    );
+    // Longer than the watcher's debounce plus a stability margin.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(h.ui.dialogs).toEqual([]);
+    expect(h.steering.forced.filter((trigger) => trigger.reason === "out-of-band")).toEqual([]);
+    expect(LAST_WIDGET(h)).toContain("Gate: executing");
+  }, 10_000);
+
+  test("plugin-mediated plan-editing writes are not out-of-band", async () => {
+    const h = await executingHarness({ uiScript: { select: "Approve" } });
+    await h.dispatchTool("reins_renegotiate");
+    expect(LAST_WIDGET(h)).toContain("Gate: plan-editing");
+    const dialogsAtGate = h.ui.dialogs.length;
+
+    // Contract-significant content changes during plan editing.
+    handEdit(h);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // The watcher does not react: plan-editing writes are plugin-mediated,
+    // and re-entering executing re-arms the baseline.
+    expect(h.ui.dialogs).toHaveLength(dialogsAtGate);
+    expect(LAST_WIDGET(h)).toContain("Gate: plan-editing");
+  }, 10_000);
+
+  test("when the native watcher errors the polling fallback engages and still detects", async () => {
+    const h = makeHarness({ planDir: "plan-active", now: FIXED_NOW });
+    await h.fire("session_shutdown"); // only the direct monitor watches here
+
+    // The watched directory does not exist yet: creating the native
+    // watcher fails, which is exactly the fallback's trigger.
+    const ghost = join(h.root, "ghost");
+    let state: ReinsState = { phase: "executing", planDir: ghost };
+    const monitor: DriftMonitor = createDriftMonitor({
+      state: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      deps: () => ({ ...h.deps, fs: createNodeFsPort(ghost) }),
+      pollIntervalMs: 25,
+      debounceMs: 10,
+    });
+    try {
+      await monitor.sync(); // arm on the empty directory; the watcher errors
+
+      // ...and the polling keeps watching: creating the plan directory
+      // with contract content is detected without any boundary event.
+      mkdirSync(ghost, { recursive: true });
+      const fs = createNodeFsPort(ghost);
+      fs.write("100-ghost-task.md", [
+        "---",
+        "type: Task",
+        "id: ghost-task",
+        "title: Ghost task",
+        "executionStatus: pending",
+        "---",
+        "",
+        "# Task",
+        "",
+        "## Description",
+        "",
+        "Appeared while the native watcher was down.",
+        "",
+        "## Acceptance Criteria",
+        "",
+        "- The polling fallback sees it.",
+        "",
+        "## Constraints",
+        "",
+        "- None.",
+        "",
+      ].join("\n"));
+
+      await vi.waitFor(() => expect(state.phase).toBe("reconciling"), { timeout: 2_000 });
+
+      // The fallback was announced (synchronously at arm, or when the
+      // native watcher's error event arrived).
+      const fallback = h.ui.notifies.find((n) => n.message.includes("polling fallback"));
+      expect(fallback?.type).toBe("warning");
+      const forced = h.steering.forced.find((trigger) => trigger.reason === "out-of-band");
+      expect(forced?.note).toContain("100-ghost-task.md");
+    } finally {
+      monitor.stop();
+    }
   });
 });
