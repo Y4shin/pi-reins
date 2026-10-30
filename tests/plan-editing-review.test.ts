@@ -49,7 +49,7 @@ const FIXED_NOW = () => "2026-10-01T12:00:00.000Z";
  * (an omitted answer dismisses it, matching the fail-closed stub).
  */
 async function planEditingHarness(
-  extra: { modify?: boolean; remove?: boolean; deferModify?: boolean } = {},
+  extra: { modify?: boolean; remove?: boolean; parked?: boolean } = {},
   reviewAnswer?: string | ((title: string) => string | undefined),
 ): Promise<ReinsHarness> {
   const extras: string[] = [];
@@ -89,6 +89,26 @@ async function planEditingHarness(
       "",
     ].join("\n"));
   }
+  if (extra.parked) {
+    // A proposal the sweep will defer: the gate-1 disposition that
+    // must survive whatever the review gate concludes.
+    extras.push([
+      "---",
+      "type: Change Proposal",
+      "id: cp-park-sizing",
+      "kind: modify",
+      "target: implement-change",
+      "title: Park the sizing question",
+      "---",
+      "",
+      "# Change Proposal: Park the sizing question",
+      "",
+      "## Rationale",
+      "",
+      "The sizing decision should wait for the profiling results.",
+      "",
+    ].join("\n"));
+  }
   const h = makeHarness({
     planDir: "plan-active",
     now: FIXED_NOW,
@@ -97,7 +117,7 @@ async function planEditingHarness(
         if (reviewAnswer !== undefined && /revision review/i.test(title)) {
           return typeof reviewAnswer === "function" ? reviewAnswer(title) : reviewAnswer;
         }
-        if (title.includes("Retitle the verification")) return extra.deferModify ? "Defer" : "Approve";
+        if (title.includes("Retitle the verification")) return "Approve";
         if (
           title.includes("Drop the implementation") || title.includes("cp-add-cli-migration")
         ) {
@@ -413,13 +433,58 @@ describe("the review gate: dialog, reject, abandon", () => {
   });
 
   test("abandon does not relitigate gate-1 dispositions: deferred markers survive", async () => {
-    const h = await planEditingHarness({ modify: true, deferModify: true }, "Abandon");
+    const h = await planEditingHarness({ parked: true }, "Abandon");
     await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
 
     const outcome = await h.dispatchTool("reins_finish_revision");
     expect(outcome.isError).toBe(false);
 
-    expect(h.readPlanFile("proposals/cp-modify-verify.md")).toContain("deferred: true");
+    expect(h.readPlanFile("proposals/cp-park-sizing.md")).toContain("deferred: true");
     expect(h.planFiles().some((file) => file === "310-migrate-cli-flags.md")).toBe(false);
+  });
+});
+
+describe("review acceptance: the durable records", () => {
+  test("acceptance bumps the revision, writes the Update entry with the verified event, and deletes the applied proposals", async () => {
+    const h = await planEditingHarness({ modify: true, parked: true }, "Accept");
+    await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
+    await h.dispatchTool("reins_edit_task", {
+      taskId: "verify-result",
+      acceptanceCriteria: "- The focused verification passes.",
+    });
+
+    const outcome = await h.dispatchTool("reins_finish_revision");
+    expect(outcome.isError).toBe(false);
+
+    // The revision bump and the human-verified event on plan.md.
+    const plan = h.readPlanFile("plan.md");
+    expect(plan).toContain("revision: 2");
+    expect(plan).toContain("verified:");
+    expect(plan).toContain("by: human:harness-test-user");
+    expect(plan).toContain("at: 2026-10-01T12:00:00.000Z");
+
+    // The log Update entry, newest first, referencing the revision and
+    // naming what the revision changed.
+    const log = h.readPlanFile("log.md");
+    expect(log).toMatch(/\*\*Update\*\*: Revision 2 accepted\./);
+    expect(log).toContain("migrate-cli-flags");
+    expect(log).toContain("verify-result");
+    const updateIndex = log.indexOf("**Update**");
+    const activationIndex = log.indexOf("**Activation**");
+    expect(updateIndex).toBeGreaterThan(-1);
+    expect(updateIndex).toBeLessThan(activationIndex);
+    expect(log.indexOf("## 2026-10-01")).toBeGreaterThan(-1);
+    expect(log.indexOf("## 2026-10-01")).toBeLessThan(log.indexOf("## 2026-09-02"));
+
+    // Applied proposals are deleted; the parked-and-deferred one survives.
+    expect(h.planFiles().some((file) => file === "proposals/cp-add-cli-migration.md")).toBe(false);
+    expect(h.planFiles().some((file) => file === "proposals/cp-modify-verify.md")).toBe(false);
+    expect(h.readPlanFile("proposals/cp-park-sizing.md")).toContain("deferred: true");
+
+    // The tool set is restored and executing resumes on the revised plan.
+    expect(h.toolset.active).toContain("edit");
+    expect(h.toolset.active).toContain("write");
+    const start = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
+    expect(start.message).toBe("Started inspect-current-system.");
   });
 });

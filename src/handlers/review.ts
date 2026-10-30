@@ -376,7 +376,9 @@ async function acceptRevision(
     "Revision accepted; the contract returned to executing on the revised plan.",
   );
   renderWidget(deps, finalState, discoverPlanDir(deps.fs, planDir));
-  const report = `Revision accepted; the contract returned to executing. Pending proposals were resolved.`;
+  const report =
+    "Revision accepted: the contract returned to executing on the revised plan. " +
+    "The applied proposals were resolved; deferred ones stay pending.";
   deps.ui.notify(report, "info");
   return { state: finalState, result: { kind: "accepted", phase: "executing", report } };
 }
