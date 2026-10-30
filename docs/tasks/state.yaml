@@ -1,7 +1,2 @@
-schema_version: 4
-map: phase1-execution-contract
-<<<<<<< HEAD
-task: out-of-band-detection
-=======
+map: null
 task: null
->>>>>>> main

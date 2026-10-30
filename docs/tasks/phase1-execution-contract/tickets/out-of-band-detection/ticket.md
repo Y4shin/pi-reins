@@ -3,7 +3,7 @@ type: ticket
 subtype: feature
 title: Out-of-band plan change detection and reconciliation
 status: stable
-workflow_state: ready
+workflow_state: done
 blocked_by:
 - task-lifecycle
 size: l
