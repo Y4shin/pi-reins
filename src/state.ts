@@ -79,6 +79,21 @@ export interface ReinsState {
    * reconcile resumes in executing on the durable plan directory.
    */
   planEditing?: PlanEditingContext;
+  /**
+   * Deferred proposals folded during the completion walkthrough whose
+   * designated durable target has not verified yet. Ephemeral like the
+   * rest of this state: the proposal documents stay on disk until the
+   * fold verifies, so a restart re-asks the disposition.
+   */
+  completionFolds?: CompletionFold[];
+  /**
+   * Why completion verification is unavailable (pi-subagents absence),
+   * set once per session at the session_start registration attempt.
+   * Undefined means the verifier registered. The completion tool
+   * refuses on it with the named error and the widget carries the
+   * marker while it is set. Ephemeral like the rest of this state.
+   */
+  verifierUnavailable?: string;
 }
 
 /** The renegotiation session's in-flight revision, carried by the phase it belongs to. */
@@ -89,6 +104,23 @@ export interface PlanEditingContext {
   snapshot: PlanSnapshot;
   /** The active tool set before the plan-editing swap; restored at the review's end. */
   tools: string[];
+}
+
+/**
+ * A deferred proposal folded during the completion walkthrough: the
+ * user designated a durable target location, and the agent still owes
+ * the write (it lands with the agent's normal tools, outside the plan
+ * directory). Ephemeral like the rest of this state: a restart drops
+ * it, and the next walkthrough re-asks the disposition, since the
+ * proposal document stays on disk until the fold verifies.
+ */
+export interface CompletionFold {
+  /** The proposal's semantic id (frontmatter id). */
+  proposalId: string;
+  /** The proposal document's plan-relative path. */
+  file: string;
+  /** The user-designated durable location the content is folded into. */
+  target: string;
 }
 
 export function freshState(): ReinsState {

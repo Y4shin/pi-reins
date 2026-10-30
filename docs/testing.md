@@ -77,6 +77,16 @@ or exact strings beyond the steering summary's required content lines.
   the recorded entries (the real wiring reads pi's session manager),
   and `h.fire("session_start", { reason: "resume" })` after a gate ran
   exercises the leftover-gate reconcile.
+- **The event bus (`h.events`)**: the fake ExtensionAPI exposes a
+  process-local pub/sub bus standing in for `pi.events`. Tests simulate
+  an installed pi-subagents owner by registering a listener for the
+  runtime agent registration event (`RUNTIME_AGENT_REGISTER_EVENT`,
+  exported from `src/handlers/verifier.ts`) that writes
+  `{ ok: true, registration }` onto the request; without a listener the
+  plugin sees the dependency as absent and the completion verifier is
+  refusal-locked (the session_start install marks the state, notifies
+  error plus widget marker only for a session whose entries show a
+  bound contract, and `reins_complete` refuses by name).
 - **Fixtures**: `tests/fixtures/plan-valid/` is the conforming sample
   plan (plan document, index, log, three tasks with binding sections,
   two carrying expected declaration regexes, one change proposal, one

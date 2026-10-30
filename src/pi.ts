@@ -29,6 +29,11 @@ import { createSettledBackstop } from "./handlers/agent-settled.js";
 import { createDriftMonitor } from "./handlers/drift.js";
 import { guardPlanDirWrites, observeExpectedDeclarations } from "./handlers/tool-call.js";
 import { openRenegotiationSession } from "./handlers/renegotiate.js";
+import {
+  createSubagentsVerifier,
+  installCompletionVerifier,
+  type VerifierRegistration,
+} from "./handlers/verifier.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
@@ -53,9 +58,16 @@ export interface ReinsWiring {
 
 export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void {
   const steeringEngine = createSteeringEngine();
-  const createDeps = wiring.createDeps ?? ((ctx, options) =>
-    createRealDeps(ctx, pi, options, steeringEngine.port));
   let state: ReinsState = freshState();
+
+  // The completion verifier's pi-subagents surface: createRealDeps
+  // wires the current runner; session_start swaps it to the real RPC
+  // adapter when the runtime agent registration succeeds, and until it
+  // does, completion is refusal-locked (verifierUnavailable on state).
+  let verifierRunner: VerifierRunner = createUnavailableVerifier();
+  let verifierRegistration: VerifierRegistration | undefined;
+  const createDeps = wiring.createDeps ?? ((ctx, options) =>
+    createRealDeps(ctx, pi, options, steeringEngine.port, verifierRunner));
 
   // The steering cadence is user-tunable per session (default 4).
   pi.registerFlag(CADENCE_FLAG, {
@@ -65,11 +77,27 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   });
 
   pi.on("session_start", async (event, ctx) => {
-    state = onSessionStart(createDeps(ctx), event as SessionStartEvent);
+    const deps = createDeps(ctx);
+    // The verifier install is the session's startup health check and
+    // runs before any state narration: a bound contract with an absent
+    // runtime hears the availability failure first, then where things
+    // stand. The flag it produced rides the reconciled state.
+    const verifier = installCompletionVerifier(deps, pi, verifierRegistration, freshState());
+    state = onSessionStart(deps, event as SessionStartEvent);
+    if (verifier.state.verifierUnavailable !== undefined) {
+      state = { ...state, verifierUnavailable: verifier.state.verifierUnavailable };
+    }
     // A restart reconciles against the durable plan directory anew:
     // the previous session's drift baseline is meaningless here, and
     // its leftovers (a crash's materialized content) are authoritative.
     drift.reset();
+    if (verifier.install.ok) {
+      verifierRunner = verifier.install.runner ?? verifierRunner;
+      verifierRegistration = verifier.install.registration;
+    } else {
+      // The old registration (if any) is already disposed by the install.
+      verifierRegistration = undefined;
+    }
   });
 
   pi.registerCommand("reins-attach", {
@@ -227,7 +255,11 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   });
   pi.on("turn_start", async (_event, ctx) => drift.sync(ctx));
   pi.on("turn_end", async (_event, ctx) => drift.sync(ctx));
-  pi.on("session_shutdown", () => drift.stop());
+  pi.on("session_shutdown", () => {
+    drift.stop();
+    verifierRegistration?.dispose();
+    verifierRegistration = undefined;
+  });
 
   pi.on(
     "context",
@@ -254,6 +286,7 @@ function createRealDeps(
   pi: ExtensionAPI,
   options: ReinsDepsOptions | undefined,
   steering: ReinsDeps["steering"],
+  verifier: VerifierRunner,
 ): ReinsDeps {
   return {
     fs: createNodeFsPort(options?.fsRoot ?? ctx.cwd),
@@ -293,7 +326,21 @@ function createRealDeps(
       },
     },
     steering,
-    verifier: createUnavailableVerifier(),
+    verifier,
+  };
+}
+
+/**
+ * The verification runners all real deps carry: session_start swaps
+ * this for the pi-subagents RPC adapter when the runtime agent
+ * registration succeeds. The tools read deps fresh per execution, so
+ * the swap is visible to every later call.
+ */
+function createUnavailableVerifier(): VerifierRunner {
+  return {
+    run: async () => {
+      throw new Error("reins-completion-verifier unavailable; it registers at session_start");
+    },
   };
 }
 
@@ -335,17 +382,3 @@ function resolveActor(cwd: string): string {
   }
 }
 
-/**
- * The completion verifier is registered at session_start through
- * pi-subagents (plan-completion ticket); until then it refuses visibly
- * rather than pretending to verify.
- */
-function createUnavailableVerifier(): VerifierRunner {
-  return {
-    run: async () => {
-      throw new Error(
-        "reins-completion-verifier is not available: pi-subagents integration lands with plan completion",
-      );
-    },
-  };
-}
