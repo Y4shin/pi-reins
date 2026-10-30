@@ -378,6 +378,13 @@ describe("the review gate: dialog, reject, abandon", () => {
     const refused = await h.dispatchTool("reins_materialize_add", { proposalId: "cp-add-cli-migration" });
     expect(refused.isError).toBe(true);
     expect(refused.message).toContain("reviewing");
+    // The guard inversion holds reviewing too: raw writes stay blocked.
+    const shell = await h.fire("tool_call", {
+      toolName: "bash",
+      input: { command: "echo hi > /tmp/notes.txt" },
+    });
+    expect(shell).toHaveLength(1);
+    expect((shell[0] as { block?: boolean }).block).toBe(true);
 
     // Re-offering works: the next finish presents the dialog again.
     let calls = 0;

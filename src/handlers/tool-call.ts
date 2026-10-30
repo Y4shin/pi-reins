@@ -157,23 +157,24 @@ export function shellWriteTargets(command: string): string[] {
 
 /**
  * The refusal the plan-editing inversion issues: every raw write is
- * blocked while the contract is being revised, inside and out.
+ * blocked while the contract is parked for its review, inside and out.
  */
 function planEditingRefusalReason(target: string): string {
   return (
-    `Blocked write outside the plan directory ("${target}"): the contract is in plan editing. ` +
-    "Finish the revision through the plan-editing tools (reins_materialize_add, reins_edit_task, " +
-    "reins_remove_task) and submit it for review with reins_finish_revision; " +
-    "raw writes resume when the review concludes."
+    `Blocked write outside the plan directory ("${target}"): the contract is paused in plan ` +
+    "editing (revision and review). Finish the revision through the plan-editing tools " +
+    "(reins_materialize_add, reins_edit_task, reins_remove_task) and submit it for review with " +
+    "reins_finish_revision; raw writes resume when the review concludes."
   );
 }
 
 /**
  * The tool_call handler leg that blocks raw writes into the plan
- * directory in every bound state. During plan-editing the guard is
- * inverted: writes outside the plan directory are blocked too (the
- * model edits the contract only through the plan-editing tools until
- * the review concludes), while reads and the plugin's own tools pass.
+ * directory in every bound state. During plan-editing (and the
+ * reviewing pause its submission opens) the guard is inverted: writes
+ * outside the plan directory are blocked too (the contract is being
+ * revised and reviewed through the plugin tools until the review
+ * concludes), while reads and the plugin's own tools pass.
  */
 export function guardPlanDirWrites(
   event: ToolCallEvent,
@@ -188,7 +189,7 @@ export function guardPlanDirWrites(
       }
     }
   }
-  if (contract.phase === "plan-editing" && planDir !== undefined) {
+  if ((contract.phase === "plan-editing" || contract.phase === "reviewing") && planDir !== undefined) {
     for (const target of rawWriteTargets(event)) {
       if (!resolvesInside(target, ctx.cwd, planDir)) {
         return { block: true, reason: planEditingRefusalReason(target) };
