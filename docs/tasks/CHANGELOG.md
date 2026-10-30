@@ -95,3 +95,13 @@ chain of user-role pushback runs (armed-marker identification, reset on
 a real user prompt) while a bound contract has remaining work. The
 clean-state refusal was the staged home plan-completion's full path
 later replaced. Gate: typecheck clean, 15 files / 145 tests.
+
+## 2026-10-30, Out-of-band plan change detection and reconciliation (out-of-band-detection)
+`fingerprintContract` hashes the canonical contract-significant content
+and a drift monitor compares it at turn boundaries, verified against
+the plugin's observed writes, while a session watcher (fs.watch with a
+polling fallback, covering the silent nonexistent-root case) catches
+idle edits; drift notifies, steers, and holds mutations in reconciling
+until the dialog resumes executing. Detection reacts only while
+executing; hand edits during gate phases surface through the review
+diff. Gate: typecheck clean, 17 files / 167 tests.
