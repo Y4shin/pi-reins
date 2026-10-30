@@ -10,9 +10,8 @@ title: docs/tasks
 
 - agent-dashboard
 - karen-mode
-- phase1-execution-contract
 - subagent-plan-integration
 
 ## Archived
 
-(none)
+- phase1-execution-contract
