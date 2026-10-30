@@ -26,6 +26,7 @@ import type {
 } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { createSettledBackstop } from "./handlers/agent-settled.js";
+import { createDriftMonitor } from "./handlers/drift.js";
 import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { openRenegotiationSession } from "./handlers/renegotiate.js";
 import { createNodeFsPort } from "./plan/fs.js";
@@ -74,6 +75,8 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       const commandDeps = createDeps(ctx, { fsRoot: planPath });
       const outcome = attach(commandDeps, state, planPath);
       state = outcome.state;
+      // Binding (or re-binding) arms the drift baseline and watcher.
+      await drift.sync(ctx);
     },
   });
 
@@ -84,6 +87,8 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
       const commandDeps = createDeps(ctx, { fsRoot: state.planDir });
       const outcome = await activate(commandDeps, state);
       state = outcome.state;
+      // Entering executing arms the drift baseline and watcher.
+      await drift.sync(ctx);
     },
   });
 
@@ -173,6 +178,23 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   });
   pi.on("agent_settled", (_event, ctx) => settledBackstop.onSettled(ctx));
   pi.on("before_agent_start", () => settledBackstop.onRunStart());
+
+  // Out-of-band detection: turn-boundary fingerprint comparison with
+  // turn-end drift verification against the plugin's observed writes, a
+  // session-scoped watcher as best-effort live notification while idle,
+  // and the reconciliation gate (notify, steer, hold mutations). The
+  // baseline arms whenever the contract enters executing, so the
+  // plugin's own records on the way in are absorbed by construction.
+  const drift = createDriftMonitor({
+    state: () => state,
+    setState: (next) => {
+      state = next;
+    },
+    deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+  });
+  pi.on("turn_start", async (_event, ctx) => drift.sync(ctx));
+  pi.on("turn_end", async (_event, ctx) => drift.sync(ctx));
+  pi.on("session_shutdown", () => drift.stop());
 
   pi.on(
     "context",

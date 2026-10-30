@@ -57,6 +57,15 @@ export interface ReinsState {
    * user-submitted prompt resets it, the pushback run's own start does not.
    */
   pushbackCount?: number;
+  /**
+   * Contract-significant files the plugin itself wrote during the
+   * current turn. Tools that write contract content (the plan-editing
+   * tools, plan-editing-review) record their files here; the
+   * out-of-band drift monitor drains the list at the turn-end
+   * verification, so the plugin's own writes are never treated as
+   * out-of-band. Ephemeral like the rest of this state; never persisted.
+   */
+  pluginContractWrites?: string[];
 }
 
 export function freshState(): ReinsState {
