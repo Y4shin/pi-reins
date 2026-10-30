@@ -208,6 +208,16 @@ describe("on detection mutations are held until reconciled", () => {
     const start = await h.dispatchTool("reins_task_start", { taskId: "inspect-current-system" });
     expect(start.isError).toBe(true);
     expect(start.message).toContain("reconciling");
+    const complete = await h.dispatchTool("reins_complete");
+    expect(complete.isError).toBe(true);
+    expect(complete.message).toContain("reconciling");
+    const propose = await h.dispatchTool("reins_propose_change", {
+      kind: "modify",
+      target: "inspect-current-system",
+      rationale: "Recorded while the gate held.",
+    });
+    expect(propose.isError).toBe(true);
+    expect(propose.message).toContain("reconciling");
     // ...and raw writes into the plan directory stay blocked.
     const blocks = await h.fire("tool_call", {
       type: "tool_call",

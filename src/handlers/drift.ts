@@ -113,7 +113,9 @@ export function createDriftMonitor(io: DriftMonitorIo): DriftMonitor {
       pollIntervalMs: io.pollIntervalMs,
       debounceMs: io.debounceMs,
       onDrift: () => {
-        void monitor.onWatchedDrift();
+        // Fire-and-forget: the watcher is best-effort live notification;
+        // the boundary legs remain the reliable detection path.
+        monitor.onWatchedDrift().catch(() => {});
       },
       onFallback: (reason) => {
         deps.ui.notify(
