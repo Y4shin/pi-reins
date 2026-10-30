@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Change proposal recording and visibility
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - task-lifecycle

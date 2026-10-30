@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: User-controlled plan activation
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - attach-validation

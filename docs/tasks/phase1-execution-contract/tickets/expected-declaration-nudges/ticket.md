@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Expected-declaration steering nudges
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - task-lifecycle

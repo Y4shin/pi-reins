@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Attach-time validation of the execution-plan contract
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - scaffold-plan-io

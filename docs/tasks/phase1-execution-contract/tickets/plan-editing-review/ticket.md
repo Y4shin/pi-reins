@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Plan-editing enforcement, review gate, abandon, and crash recovery
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - renegotiation-session

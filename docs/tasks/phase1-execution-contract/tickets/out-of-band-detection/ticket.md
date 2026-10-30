@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Out-of-band plan change detection and reconciliation
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - task-lifecycle

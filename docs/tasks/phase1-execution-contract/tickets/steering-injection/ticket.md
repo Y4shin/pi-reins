@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Steering summary injection with cadence and forced triggers
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - task-lifecycle

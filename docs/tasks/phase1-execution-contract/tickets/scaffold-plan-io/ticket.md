@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Package scaffold, test harness, and plan-directory IO
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by: []
 size: l

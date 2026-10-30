@@ -2,7 +2,7 @@
 type: ticket
 subtype: feature
 title: Task lifecycle tools with write-path enforcement
-status: stable
+status: deprecated
 workflow_state: done
 blocked_by:
 - activation

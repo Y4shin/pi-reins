@@ -1,6 +1,6 @@
 ---
 title: Phase 1 decisions for the pi-reins execution contract
-status: stable
+status: deprecated
 type: map
 ---
 
