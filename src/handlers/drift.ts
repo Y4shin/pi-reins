@@ -156,13 +156,16 @@ export function createDriftMonitor(io: DriftMonitorIo): DriftMonitor {
     }
     const changed = changedFiles(baseline.files, current.files);
     const observed = drainObservedWrites(state);
+    // Re-read after the drain: the reaction must chain from the state
+    // without the consumed observations.
+    const drained = io.state();
     const unexplained = changed.filter((file) => !observed.has(file));
     if (unexplained.length === 0) {
       // Every changed file is the plugin's own doing: absorb silently.
       baseline = current;
       return;
     }
-    await react(deps, state, unexplained, current);
+    await react(deps, drained, unexplained, current);
   }
 
   /** The out-of-band reaction: notify, steer, hold, and ask for reconciliation. */
