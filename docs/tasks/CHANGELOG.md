@@ -114,3 +114,15 @@ deviation, overriding the cadence; guard precedence is pinned (a
 blocked plan-directory write queues no nudge). Advisory by
 construction: no block path, the write always proceeds, matching is
 raw-string best-effort. Gate: typecheck clean, 18 files / 179 tests.
+
+## 2026-10-30, Plan-editing enforcement, review gate, abandon, and crash recovery (plan-editing-review)
+The renegotiation machine's second half: the tool_call guard inverts
+during plan-editing and reviewing (raw writes outside the plan
+directory blocked, into it always blocked), the four plan-editing
+tools materialize, edit, and remove approved intents, and
+`reins_finish_revision` diffs the session snapshot for acceptance
+(revision bump, Update entry, verified event, applied proposals
+deleted in one mutation step), rejection, or a contract-scoped
+abandon. Crash recovery reconciles leftover gate records on
+session_start via `SessionPort.readEntries` and `DriftMonitor.reset`.
+Gate: typecheck clean, 19 files / 202 tests.
