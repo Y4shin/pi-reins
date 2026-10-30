@@ -25,12 +25,14 @@ import type {
   VerifierRunner,
 } from "./deps.js";
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
+import { createSettledBackstop } from "./handlers/agent-settled.js";
 import { guardPlanDirWrites } from "./handlers/tool-call.js";
 import { openRenegotiationSession } from "./handlers/renegotiate.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
 import { createSteeringEngine, STEERING_MESSAGE_TYPE } from "./steering/engine.js";
 import { createTaskTools } from "./tools/task.js";
+import { createCompleteTool } from "./tools/complete.js";
 import { createProposeTool } from "./tools/propose.js";
 import { createRenegotiateTool } from "./tools/renegotiate.js";
 
@@ -122,6 +124,19 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
     }),
   );
 
+  // The plan-level completion guard: every attempt is checked against
+  // the durable plan directory and refused with the remaining-work list
+  // while work remains.
+  pi.registerTool(
+    createCompleteTool({
+      deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+      state: () => state,
+      setState: (next) => {
+        state = next;
+      },
+    }),
+  );
+
   // The agent's deliberate opening of the renegotiation gate.
   pi.registerTool(
     createRenegotiateTool({
@@ -144,6 +159,21 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
   // queued on the deps' steering port.
   pi.on("before_agent_start", () => steeringEngine.onRunStart());
   pi.on("session_compact", () => steeringEngine.onCompacted());
+
+  // The settled backstop: when a run settles under an active, incomplete
+  // contract, seed a corrective run through a real user-role pushback
+  // message; the chain counter lives in state and resets on a user-submitted
+  // prompt (but not on the pushback run's own start).
+  const settledBackstop = createSettledBackstop({
+    state: () => state,
+    setState: (next) => {
+      state = next;
+    },
+    deps: (ctx) => createDeps(ctx as ExtensionContext, { fsRoot: state.planDir }),
+  });
+  pi.on("agent_settled", (_event, ctx) => settledBackstop.onSettled(ctx));
+  pi.on("before_agent_start", () => settledBackstop.onRunStart());
+
   pi.on(
     "context",
     createContextHandler(steeringEngine, {
