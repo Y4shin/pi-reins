@@ -27,7 +27,7 @@ import type {
 import { onSessionStart, type SessionStartEvent } from "./handlers/session.js";
 import { createSettledBackstop } from "./handlers/agent-settled.js";
 import { createDriftMonitor } from "./handlers/drift.js";
-import { guardPlanDirWrites } from "./handlers/tool-call.js";
+import { guardPlanDirWrites, observeExpectedDeclarations } from "./handlers/tool-call.js";
 import { openRenegotiationSession } from "./handlers/renegotiate.js";
 import { createNodeFsPort } from "./plan/fs.js";
 import { freshState, type ReinsState } from "./state.js";
@@ -155,8 +155,19 @@ export function registerReins(pi: ExtensionAPI, wiring: ReinsWiring = {}): void 
 
   // Raw writes into the plan directory are blocked pre-execution for
   // every bound contract; the reins_* tools are the legal alternative
-  // the block reason names.
-  pi.on("tool_call", (event, ctx) => guardPlanDirWrites(event, ctx, { planDir: state.planDir }));
+  // the block reason names. The expected-declaration observer rides the
+  // same surface, advisory only: it queues a steering nudge for writes
+  // and commands outside the active tasks' declared lists and never
+  // blocks (a blocked call's reason is the targeted feedback there).
+  pi.on("tool_call", (event, ctx) => {
+    const blocked = guardPlanDirWrites(event, ctx, { planDir: state.planDir });
+    if (blocked !== undefined) return blocked;
+    observeExpectedDeclarations(event, ctx, {
+      state: () => state,
+      deps: (eventCtx) => createDeps(eventCtx as ExtensionContext, { fsRoot: state.planDir }),
+    });
+    return undefined;
+  });
 
   // Steering: the context-tail summary is the plugin's single injection
   // point. The run boundary resets the per-run call counter, compaction
