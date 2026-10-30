@@ -72,7 +72,11 @@ or exact strings beyond the steering summary's required content lines.
   a trigger that the context leg drains at the next eligible injection,
   so `h.steering.forced` holds only pending triggers. `h.aborts`
   captures `ctx.abort()` calls, the run-termination surface command
-  handlers use at the renegotiation gate.
+  handlers use at the renegotiation gate. The session recorder is also
+  the crash-recovery read surface: `h.session.readEntries()` replays
+  the recorded entries (the real wiring reads pi's session manager),
+  and `h.fire("session_start", { reason: "resume" })` after a gate ran
+  exercises the leftover-gate reconcile.
 - **Fixtures**: `tests/fixtures/plan-valid/` is the conforming sample
   plan (plan document, index, log, three tasks with binding sections,
   two carrying expected declaration regexes, one change proposal, one

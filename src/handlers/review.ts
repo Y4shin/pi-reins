@@ -28,7 +28,7 @@ import type { ReinsDeps, FsPort } from "../deps.js";
 import { discoverPlanDir } from "../plan/discover.js";
 import { extractBindingSections, parseDoc, type BindingSections } from "../plan/parse.js";
 import { appendVerifiedEvent, prependLogEntry, writeFields } from "../plan/write.js";
-import { recordContractWrite, transition, type PlanEditingContext, type ReinsPhase, type ReinsState } from "../state.js";
+import { transition, type PlanEditingContext, type ReinsPhase, type ReinsState } from "../state.js";
 import type { PlanSnapshot } from "../plan/fingerprint.js";
 import { requireUi } from "../ui/dialogs.js";
 import { renderWidget } from "../ui/widget.js";
@@ -303,7 +303,8 @@ export async function finishRevisionReview(
   }
   if (answer === "Abandon") {
     // Restore the contract first, then leave the gate: entering
-    // executing re-arms the drift baseline over the restored content.
+    // executing re-arms the drift baseline over the restored content,
+    // so the restore's per-file records would be redundant.
     restoreSnapshot(deps, planEditing.snapshot);
     deps.toolset.setActiveTools(planEditing.tools);
     const abandoned = transition(phase, "executing");
@@ -344,7 +345,6 @@ async function acceptRevision(
   planDir: string,
   diff: RevisionDiff,
 ): Promise<{ state: ReinsState; result: ReviewOutcome }> {
-  const scan = discoverPlanDir(deps.fs, planDir);
   await withFileMutationQueue(join(planDir, "plan.md"), async () => {
     // Fresh read inside the queue; the whole acceptance is one step.
     const fresh = discoverPlanDir(deps.fs, planDir);
@@ -363,13 +363,16 @@ async function acceptRevision(
       if (deps.fs.exists(file)) deps.fs.delete(file);
     }
   });
-  // Record the acceptance's contract writes for the drift monitor.
-  recordContractWrite(phase, setState, "plan.md");
-  recordContractWrite(phase, setState, "log.md");
-
   deps.toolset.setActiveTools(planEditing.tools);
   const resumed = transition(phase, "executing");
-  const finalState = { ...resumed, planEditing: undefined };
+  // The acceptance's contract writes ride the state for the drift
+  // verification (plan.md is contract-significant); the proposal
+  // deletions are not (proposals are excluded from the fingerprint).
+  const finalState = {
+    ...resumed,
+    planEditing: undefined,
+    pluginContractWrites: ["plan.md"],
+  };
   setState(finalState);
   deps.steering.forceInject(
     "gate-transition",
